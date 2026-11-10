@@ -241,3 +241,7 @@ docs/screenshots/             README 截图
 node tests/e2e.mjs            # 端到端测试
 node tests/readme-shots.mjs   # 重新生成 docs/screenshots/
 ```
+
+## 许可证
+
+[MIT](LICENSE)
