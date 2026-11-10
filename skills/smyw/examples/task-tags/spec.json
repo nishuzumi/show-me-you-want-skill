@@ -1,0 +1,552 @@
+{
+  "title": "任务管理：用「标签」替代「分类」",
+  "summary": "给任务增加多标签能力，替代原来的单一「分类」。\n列表页：工具栏增加标签筛选，表格「分类」列换成「标签」列，「新建任务」改为在页内展开表单卡片；新增「标签管理」页；删除「分类管理」页。\n后端：新增 TagService 与 /api/tags 接口，任务接口改为接收 tags。",
+  "stage": "prototype",
+  "version": 1,
+  "changes": [
+    {
+      "area": "frontend",
+      "change": "modified",
+      "text": "任务列表页：工具栏新增标签筛选；表格「分类」列 → 「标签」列；新建任务改为页内卡片"
+    },
+    {
+      "area": "frontend",
+      "change": "added",
+      "text": "新增「标签管理」页面（增删改标签、设置颜色）"
+    },
+    {
+      "area": "frontend",
+      "change": "removed",
+      "text": "删除「分类管理」页面，侧边栏入口同步移除"
+    },
+    {
+      "area": "api",
+      "change": "added",
+      "text": "新增 /api/tags 增删改查接口"
+    },
+    {
+      "area": "data",
+      "change": "modified",
+      "text": "Task 模型：categoryId → tags（多对多，task_tags 关联表）"
+    }
+  ],
+  "questions": [
+    {
+      "id": "q-color",
+      "q": "标签需要支持自定义颜色吗？",
+      "options": [
+        "需要",
+        "不需要，统一灰色"
+      ]
+    },
+    {
+      "id": "q-migrate",
+      "q": "旧的「分类」数据怎么处理？",
+      "options": [
+        "自动转换成同名标签",
+        "直接丢弃"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "id": "task-list",
+      "name": "任务列表",
+      "route": "/tasks",
+      "note": "改动集中在工具栏、表单和表格",
+      "root": {
+        "id": "task-list-root",
+        "type": "page",
+        "children": [
+          {
+            "id": "header",
+            "type": "header",
+            "children": [
+              {
+                "id": "logo",
+                "type": "heading",
+                "label": "TaskBoard"
+              },
+              {
+                "id": "user-menu",
+                "type": "button",
+                "label": "用户 ▾",
+                "variant": "ghost"
+              }
+            ],
+            "component": "<AppHeader> AppHeader.vue"
+          },
+          {
+            "id": "body",
+            "type": "row",
+            "children": [
+              {
+                "id": "side-nav",
+                "type": "sidebar",
+                "label": "侧边栏",
+                "w": "1/4",
+                "children": [
+                  {
+                    "id": "nav-tasks",
+                    "type": "link",
+                    "label": "任务"
+                  },
+                  {
+                    "id": "nav-category",
+                    "type": "link",
+                    "label": "分类管理",
+                    "change": "removed",
+                    "note": "随「分类管理」页一起删除"
+                  },
+                  {
+                    "id": "nav-tags",
+                    "type": "link",
+                    "label": "标签管理",
+                    "change": "added",
+                    "fn": "navigate('/tags')"
+                  }
+                ],
+                "component": "<SideNav> SideNav.vue"
+              },
+              {
+                "id": "main",
+                "type": "section",
+                "label": "任务列表",
+                "children": [
+                  {
+                    "id": "toolbar",
+                    "type": "toolbar",
+                    "children": [
+                      {
+                        "id": "search",
+                        "type": "input",
+                        "text": "搜索任务…",
+                        "w": "1/3"
+                      },
+                      {
+                        "id": "filter-category",
+                        "type": "select",
+                        "text": "全部分类",
+                        "change": "removed"
+                      },
+                      {
+                        "id": "filter-tags",
+                        "type": "select",
+                        "text": "按标签筛选（多选）",
+                        "change": "added",
+                        "fn": "onChange → setTagFilter(ids)"
+                      },
+                      {
+                        "id": "btn-new",
+                        "type": "button",
+                        "label": "新建任务",
+                        "variant": "primary",
+                        "fn": "onClick → openCreate()",
+                        "change": "modified",
+                        "before": {
+                          "fn": "onClick → navigate('/tasks/new')"
+                        },
+                        "note": "不再跳转到新页面"
+                      }
+                    ],
+                    "component": "<TaskToolbar>"
+                  },
+                  {
+                    "id": "task-form-card",
+                    "type": "card",
+                    "label": "新建 / 编辑任务",
+                    "change": "added",
+                    "note": "方案：常驻在工具栏下方的内联卡片",
+                    "children": [
+                      {
+                        "id": "f-title",
+                        "type": "input",
+                        "label": "标题",
+                        "text": "任务标题"
+                      },
+                      {
+                        "id": "f-tags",
+                        "type": "select",
+                        "label": "标签",
+                        "text": "选择或新建标签",
+                        "fn": "TagPicker → GET /api/tags"
+                      },
+                      {
+                        "id": "f-actions",
+                        "type": "row",
+                        "children": [
+                          {
+                            "id": "f-save",
+                            "type": "button",
+                            "label": "保存",
+                            "variant": "primary",
+                            "fn": "POST /api/tasks"
+                          },
+                          {
+                            "id": "f-cancel",
+                            "type": "button",
+                            "label": "取消",
+                            "fn": "closeCreate()"
+                          }
+                        ]
+                      }
+                    ],
+                    "component": "<TaskForm>（新）"
+                  },
+                  {
+                    "id": "task-table",
+                    "type": "table",
+                    "columns": [
+                      "标题",
+                      {
+                        "label": "分类",
+                        "change": "removed"
+                      },
+                      {
+                        "label": "标签",
+                        "change": "added"
+                      },
+                      "截止日期",
+                      "操作"
+                    ],
+                    "fn": "GET /api/tasks?tags=…",
+                    "change": "modified",
+                    "before": {
+                      "fn": "GET /api/tasks?categoryId=…"
+                    },
+                    "component": "<TaskTable>"
+                  },
+                  {
+                    "id": "pager",
+                    "type": "row",
+                    "label": "分页",
+                    "component": "<Pagination>"
+                  }
+                ],
+                "component": "<TaskListPage> pages/tasks/index.vue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "tag-admin",
+      "name": "标签管理",
+      "route": "/tags",
+      "change": "added",
+      "root": {
+        "id": "tag-admin-root",
+        "type": "page",
+        "children": [
+          {
+            "id": "tag-head",
+            "type": "row",
+            "children": [
+              {
+                "id": "tag-title",
+                "type": "heading",
+                "label": "标签管理"
+              },
+              {
+                "id": "tag-add",
+                "type": "button",
+                "label": "新建标签",
+                "variant": "primary",
+                "fn": "onClick → openTagModal()"
+              }
+            ],
+            "component": "<PageHeader>"
+          },
+          {
+            "id": "tag-table",
+            "type": "table",
+            "columns": [
+              "颜色",
+              "名称",
+              "任务数",
+              "操作"
+            ],
+            "fn": "GET /api/tags",
+            "component": "<TagTable>（新）"
+          }
+        ]
+      },
+      "overlays": [
+        {
+          "id": "tag-modal",
+          "type": "modal",
+          "label": "新建 / 编辑标签",
+          "trigger": "tag-add",
+          "children": [
+            {
+              "id": "tm-name",
+              "type": "input",
+              "label": "名称"
+            },
+            {
+              "id": "tm-color",
+              "type": "select",
+              "label": "颜色",
+              "items": [
+                "灰",
+                "红",
+                "绿",
+                "蓝"
+              ]
+            },
+            {
+              "id": "tm-save",
+              "type": "button",
+              "label": "保存",
+              "variant": "primary",
+              "fn": "POST /api/tags | PUT /api/tags/:id"
+            }
+          ],
+          "component": "<TagEditModal>（新）"
+        }
+      ]
+    },
+    {
+      "id": "category-admin",
+      "name": "分类管理",
+      "route": "/categories",
+      "change": "removed",
+      "note": "功能被标签取代",
+      "root": {
+        "id": "cat-root",
+        "type": "page",
+        "children": [
+          {
+            "id": "cat-title",
+            "type": "heading",
+            "label": "分类管理"
+          },
+          {
+            "id": "cat-list",
+            "type": "list",
+            "items": [
+              "工作",
+              "生活",
+              "学习"
+            ],
+            "component": "<CategoryList>"
+          },
+          {
+            "id": "cat-add",
+            "type": "button",
+            "label": "添加分类",
+            "fn": "POST /api/categories"
+          }
+        ]
+      }
+    }
+  ],
+  "flows": [
+    {
+      "id": "flow-create",
+      "name": "创建任务",
+      "steps": [
+        {
+          "id": "c1",
+          "actor": "user",
+          "text": "点击「新建任务」",
+          "page": "task-list",
+          "node": "btn-new"
+        },
+        {
+          "id": "c2",
+          "actor": "frontend",
+          "text": "跳转到新建页 /tasks/new",
+          "change": "removed"
+        },
+        {
+          "id": "c2b",
+          "actor": "frontend",
+          "text": "在列表上方展开新建卡片",
+          "fn": "openCreate()",
+          "change": "added",
+          "node": "task-form-card"
+        },
+        {
+          "id": "c3",
+          "actor": "user",
+          "text": "填写标题，选择标签（可多选）",
+          "change": "modified",
+          "before": {
+            "text": "填写标题，选择一个分类"
+          },
+          "node": "task-form-card"
+        },
+        {
+          "id": "c4",
+          "actor": "frontend",
+          "text": "提交表单",
+          "fn": "POST /api/tasks {title, tags}",
+          "change": "modified",
+          "before": {
+            "fn": "POST /api/tasks {title, categoryId}"
+          },
+          "node": "f-save"
+        },
+        {
+          "id": "c5",
+          "actor": "backend",
+          "text": "校验并保存任务",
+          "fn": "TaskService.create(dto)"
+        },
+        {
+          "id": "c5b",
+          "actor": "backend",
+          "text": "关联标签，不存在则创建",
+          "fn": "TagService.ensure(names)",
+          "change": "added"
+        },
+        {
+          "id": "c6",
+          "actor": "db",
+          "text": "写入 tasks + task_tags",
+          "change": "modified",
+          "before": {
+            "text": "写入 tasks"
+          }
+        },
+        {
+          "id": "c7",
+          "actor": "frontend",
+          "text": "刷新列表并收起卡片",
+          "fn": "reloadTasks()",
+          "change": "modified",
+          "before": {
+            "text": "返回列表页并刷新"
+          },
+          "node": "task-table"
+        }
+      ]
+    },
+    {
+      "id": "flow-filter",
+      "name": "按标签筛选",
+      "change": "added",
+      "steps": [
+        {
+          "id": "t1",
+          "actor": "user",
+          "text": "在工具栏选择一个或多个标签",
+          "page": "task-list",
+          "node": "filter-tags"
+        },
+        {
+          "id": "t2",
+          "actor": "frontend",
+          "text": "更新 URL 查询参数并请求",
+          "fn": "setTagFilter(ids)"
+        },
+        {
+          "id": "t3",
+          "actor": "backend",
+          "text": "按标签过滤任务",
+          "fn": "GET /api/tasks?tags=1,2 → TaskRepo.findByTags()"
+        },
+        {
+          "id": "t4",
+          "actor": "frontend",
+          "text": "渲染过滤结果",
+          "node": "task-table"
+        }
+      ]
+    }
+  ],
+  "backend": [
+    {
+      "id": "m-task-ctl",
+      "name": "TaskController",
+      "kind": "controller",
+      "items": [
+        {
+          "id": "api-list",
+          "kind": "api",
+          "name": "GET /api/tasks",
+          "note": "查询参数 tags=1,2",
+          "change": "modified",
+          "before": {
+            "note": "查询参数 categoryId"
+          }
+        },
+        {
+          "id": "api-create",
+          "kind": "api",
+          "name": "POST /api/tasks",
+          "note": "body: { title, tags[] }",
+          "change": "modified",
+          "before": {
+            "note": "body: { title, categoryId }"
+          }
+        }
+      ]
+    },
+    {
+      "id": "m-tag",
+      "name": "TagService",
+      "kind": "service",
+      "change": "added",
+      "items": [
+        {
+          "id": "tag-ensure",
+          "kind": "function",
+          "name": "ensure(names: string[]): Tag[]"
+        },
+        {
+          "id": "tag-crud",
+          "kind": "api",
+          "name": "GET / POST / PUT / DELETE /api/tags"
+        }
+      ]
+    },
+    {
+      "id": "m-category",
+      "name": "CategoryService",
+      "kind": "service",
+      "change": "removed",
+      "note": "被 TagService 取代",
+      "items": [
+        {
+          "id": "cat-crud",
+          "kind": "api",
+          "name": "GET / POST /api/categories"
+        }
+      ]
+    },
+    {
+      "id": "m-task-model",
+      "name": "Task",
+      "kind": "model",
+      "items": [
+        {
+          "id": "fld-title",
+          "kind": "field",
+          "name": "title: string"
+        },
+        {
+          "id": "fld-cat",
+          "kind": "field",
+          "name": "categoryId: number",
+          "change": "removed"
+        },
+        {
+          "id": "fld-tags",
+          "kind": "field",
+          "name": "tags: Tag[]（多对多 task_tags）",
+          "change": "added"
+        },
+        {
+          "id": "mig",
+          "kind": "job",
+          "name": "migration: 分类 → 同名标签",
+          "change": "added",
+          "note": "取决于问题「旧分类数据怎么处理」的回答"
+        }
+      ]
+    }
+  ]
+}

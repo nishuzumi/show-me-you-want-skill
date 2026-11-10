@@ -1,0 +1,612 @@
+{
+  "title": "客服工作台：加入 AI 建议回复",
+  "stage": "prototype",
+  "version": 1,
+  "summary": "客服打开工单时，AI 根据对话和订单记录写好一条建议回复，客服确认或修改后再发出；回复框里加「AI 润色」。\n快捷回复功能下线，由 AI 建议取代。右侧客户信息里加「相似工单」。\n后端新增 AiReplyService，回复记录里标注是否用了 AI 草稿。",
+  "changes": [
+    {
+      "area": "frontend",
+      "change": "added",
+      "text": "工单详情新增「AI 建议回复」区块，以及「AI 草稿编辑」抽屉"
+    },
+    {
+      "area": "frontend",
+      "change": "modified",
+      "text": "回复框：加「AI 润色」，「标记已解决」从页头挪到发送按钮旁"
+    },
+    {
+      "area": "frontend",
+      "change": "removed",
+      "text": "快捷回复下拉框和「管理快捷回复」弹窗下线"
+    },
+    {
+      "area": "frontend",
+      "change": "added",
+      "text": "客户信息面板新增「相似工单」"
+    },
+    {
+      "area": "api",
+      "change": "added",
+      "text": "新增 GET /api/tickets/:id/ai-draft、/similar"
+    },
+    {
+      "area": "data",
+      "change": "modified",
+      "text": "replies 表增加 ai_draft_id"
+    }
+  ],
+  "questions": [
+    {
+      "id": "q-auto",
+      "q": "AI 草稿要在打开工单时自动生成吗？",
+      "options": [
+        "自动生成（推荐）",
+        "点按钮才生成"
+      ]
+    },
+    {
+      "id": "q-quick",
+      "q": "旧的快捷回复模板怎么处理？",
+      "options": [
+        "导入知识库，让 AI 参考（推荐）",
+        "直接删除"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "id": "inbox",
+      "name": "工单工作台 · 打开一张工单",
+      "route": "/tickets/:id",
+      "width": 1440,
+      "note": "一整屏：左边工单队列，中间工单详情和回复框，右边客户信息",
+      "root": {
+        "id": "inbox-root",
+        "type": "page",
+        "layout": "row",
+        "children": [
+          {
+            "id": "queue",
+            "type": "sidebar",
+            "label": "工单队列",
+            "w": "1/4",
+            "component": "<TicketQueue> TicketQueue.vue",
+            "children": [
+              {
+                "id": "q-search",
+                "type": "input",
+                "text": "搜索工单…"
+              },
+              {
+                "id": "q-tabs",
+                "type": "tabs",
+                "component": "<QueueTabs>",
+                "items": [
+                  "全部",
+                  "我的",
+                  "未分配",
+                  {
+                    "label": "AI 已草拟",
+                    "change": "added"
+                  }
+                ],
+                "change": "modified",
+                "before": {
+                  "items": [
+                    "全部",
+                    "我的",
+                    "未分配"
+                  ]
+                },
+                "note": "新增一个筛选：AI 已写好草稿、等人确认的工单"
+              },
+              {
+                "id": "q-list",
+                "type": "list",
+                "component": "<TicketList>",
+                "fn": "onClick → openTicket(id)",
+                "items": [
+                  "#1024 退款没到账 · 3 分钟前",
+                  "#1023 发票抬头写错 · 12 分钟前",
+                  "#1019 账号被锁定 · 1 小时前"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "detail",
+            "type": "section",
+            "label": "工单详情",
+            "component": "<TicketDetail> TicketDetail.vue",
+            "children": [
+              {
+                "id": "t-header",
+                "type": "header",
+                "component": "<TicketHeader>",
+                "children": [
+                  {
+                    "id": "t-title",
+                    "type": "heading",
+                    "label": "#1024 退款没到账"
+                  },
+                  {
+                    "id": "t-status",
+                    "type": "badge",
+                    "label": "待处理 · AI 已草拟",
+                    "change": "modified",
+                    "before": {
+                      "label": "待处理"
+                    },
+                    "note": "AI 写好草稿后，状态里说明还在等人确认"
+                  },
+                  {
+                    "id": "t-assign",
+                    "type": "button",
+                    "label": "转交",
+                    "variant": "ghost"
+                  },
+                  {
+                    "id": "t-resolve",
+                    "type": "button",
+                    "label": "标记已解决",
+                    "change": "removed",
+                    "movedTo": "t-resolve-2",
+                    "note": "挪到回复框旁边，回复完顺手点"
+                  }
+                ]
+              },
+              {
+                "id": "t-thread",
+                "type": "list",
+                "label": "对话记录",
+                "component": "<Thread>",
+                "items": [
+                  "客户：退款申请 5 天了还没到账",
+                  "客服：已提交财务，请耐心等待",
+                  "客户：今天还是没到"
+                ]
+              },
+              {
+                "id": "ai-suggest",
+                "type": "section",
+                "label": "AI 建议回复",
+                "change": "added",
+                "component": "<AiSuggestion>（新）",
+                "fn": "GET /api/tickets/:id/ai-draft",
+                "note": "根据对话和退款记录生成草稿，客服确认后才会发出",
+                "children": [
+                  {
+                    "id": "ai-text",
+                    "type": "text",
+                    "label": "您好，查到您的退款已于 11 月 6 日原路退回，银行通常 1–3 个工作日到账……"
+                  },
+                  {
+                    "id": "ai-refs",
+                    "type": "row",
+                    "children": [
+                      {
+                        "id": "ai-ref1",
+                        "type": "tag",
+                        "label": "依据：退款记录 #R-889"
+                      },
+                      {
+                        "id": "ai-ref2",
+                        "type": "tag",
+                        "label": "知识库：退款时效"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "ai-actions",
+                    "type": "row",
+                    "children": [
+                      {
+                        "id": "ai-use",
+                        "type": "button",
+                        "label": "用这条回复",
+                        "variant": "primary",
+                        "fn": "fillReply(draft)"
+                      },
+                      {
+                        "id": "ai-edit",
+                        "type": "button",
+                        "label": "展开编辑",
+                        "fn": "openDraftDrawer()"
+                      },
+                      {
+                        "id": "ai-regen",
+                        "type": "button",
+                        "label": "换一条",
+                        "variant": "ghost",
+                        "fn": "POST /api/tickets/:id/ai-draft"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "reply",
+                "type": "form",
+                "label": "回复客户",
+                "change": "modified",
+                "before": {
+                  "label": "回复"
+                },
+                "component": "<ReplyBox>",
+                "note": "回复框里加 AI 润色，快捷回复下线",
+                "children": [
+                  {
+                    "id": "reply-text",
+                    "type": "textarea",
+                    "text": "输入回复…"
+                  },
+                  {
+                    "id": "reply-bar",
+                    "type": "toolbar",
+                    "children": [
+                      {
+                        "id": "reply-quick",
+                        "type": "select",
+                        "text": "快捷回复",
+                        "change": "removed",
+                        "note": "由 AI 建议回复取代"
+                      },
+                      {
+                        "id": "reply-polish",
+                        "type": "button",
+                        "label": "AI 润色",
+                        "change": "added",
+                        "fn": "openDraftDrawer({ mode: \"polish\" })"
+                      },
+                      {
+                        "id": "t-resolve-2",
+                        "type": "button",
+                        "label": "标记已解决",
+                        "change": "added",
+                        "movedFrom": "t-resolve",
+                        "fn": "PATCH /api/tickets/:id { status: \"resolved\" }"
+                      },
+                      {
+                        "id": "reply-send",
+                        "type": "button",
+                        "label": "发送",
+                        "variant": "primary",
+                        "fn": "POST /api/tickets/:id/replies"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "customer",
+            "type": "panel",
+            "label": "客户信息",
+            "w": "1/4",
+            "component": "<CustomerPanel>",
+            "children": [
+              {
+                "id": "c-profile",
+                "type": "card",
+                "label": "张三 · VIP",
+                "text": "注册 3 年 · 历史工单 7 张"
+              },
+              {
+                "id": "c-orders",
+                "type": "list",
+                "label": "最近订单",
+                "items": [
+                  "#A-5531 蓝牙耳机 · 已退款",
+                  "#A-5102 充电器 · 已签收"
+                ]
+              },
+              {
+                "id": "c-similar",
+                "type": "section",
+                "label": "相似工单",
+                "change": "added",
+                "component": "<SimilarTickets>（新）",
+                "fn": "GET /api/tickets/:id/similar",
+                "note": "AI 按内容找出的历史工单，点开看当时怎么处理的",
+                "children": [
+                  {
+                    "id": "c-sim-list",
+                    "type": "list",
+                    "items": [
+                      "#987 退款延迟 · 已解决",
+                      "#902 退款未到账 · 已解决"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "overlays": [
+        {
+          "id": "ai-drawer",
+          "type": "drawer",
+          "label": "AI 草稿编辑",
+          "change": "added",
+          "trigger": [
+            "ai-edit",
+            "reply-polish"
+          ],
+          "component": "<AiDraftDrawer>（新）",
+          "note": "两个入口打开同一个抽屉：从建议进来是改草稿，从回复框进来是润色已经写好的内容",
+          "children": [
+            {
+              "id": "d-tone",
+              "type": "radio",
+              "label": "语气",
+              "items": [
+                "正式",
+                "亲切",
+                "简洁"
+              ]
+            },
+            {
+              "id": "d-text",
+              "type": "textarea",
+              "label": "草稿",
+              "text": "您好，查到您的退款已于 11 月 6 日原路退回……"
+            },
+            {
+              "id": "d-actions",
+              "type": "row",
+              "children": [
+                {
+                  "id": "d-apply",
+                  "type": "button",
+                  "label": "替换到回复框",
+                  "variant": "primary",
+                  "fn": "applyDraft()"
+                },
+                {
+                  "id": "d-cancel",
+                  "type": "button",
+                  "label": "取消",
+                  "variant": "ghost"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "quick-modal",
+          "type": "modal",
+          "label": "管理快捷回复",
+          "change": "removed",
+          "trigger": "reply-quick",
+          "component": "<QuickReplyModal>",
+          "note": "随快捷回复一起下线",
+          "children": [
+            {
+              "id": "qm-list",
+              "type": "list",
+              "items": [
+                "您好，已收到您的问题",
+                "请提供订单号",
+                "已为您加急处理"
+              ]
+            },
+            {
+              "id": "qm-add",
+              "type": "button",
+              "label": "新增模板"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "id": "flow-reply",
+      "name": "处理一张工单",
+      "steps": [
+        {
+          "id": "s1",
+          "actor": "user",
+          "text": "在队列里点开工单",
+          "node": "q-list"
+        },
+        {
+          "id": "s2",
+          "actor": "frontend",
+          "text": "加载工单和对话",
+          "fn": "GET /api/tickets/:id"
+        },
+        {
+          "id": "s3",
+          "actor": "backend",
+          "text": "生成建议回复（有缓存直接返回）",
+          "fn": "AiReplyService.draft(ticket)",
+          "change": "added"
+        },
+        {
+          "id": "s4",
+          "actor": "frontend",
+          "text": "展示「AI 建议回复」",
+          "node": "ai-suggest",
+          "change": "added"
+        },
+        {
+          "id": "s5",
+          "actor": "user",
+          "text": "选一条快捷回复，再手动改",
+          "node": "reply-quick",
+          "change": "removed"
+        },
+        {
+          "id": "s6",
+          "actor": "user",
+          "kind": "decision",
+          "text": "直接用草稿，还是展开编辑？",
+          "node": [
+            "ai-use",
+            "ai-edit"
+          ],
+          "change": "added"
+        },
+        {
+          "id": "s7",
+          "actor": "user",
+          "text": "点「发送」",
+          "node": "reply-send"
+        },
+        {
+          "id": "s8",
+          "actor": "backend",
+          "text": "保存回复，记录是否用了 AI 草稿",
+          "fn": "POST /api/tickets/:id/replies { body, aiDraftId }",
+          "change": "modified",
+          "before": {
+            "text": "保存回复",
+            "fn": "POST /api/tickets/:id/replies { body }"
+          }
+        },
+        {
+          "id": "s9",
+          "actor": "db",
+          "text": "写入 replies（含 ai_draft_id）",
+          "change": "modified",
+          "before": {
+            "text": "写入 replies"
+          }
+        }
+      ]
+    },
+    {
+      "id": "flow-polish",
+      "name": "润色已经写好的回复",
+      "change": "added",
+      "steps": [
+        {
+          "id": "p1",
+          "actor": "user",
+          "text": "写完后点「AI 润色」",
+          "node": "reply-polish"
+        },
+        {
+          "id": "p2",
+          "actor": "frontend",
+          "text": "打开草稿抽屉，带上已写内容",
+          "node": "ai-drawer"
+        },
+        {
+          "id": "p3",
+          "actor": "backend",
+          "text": "按选定语气改写",
+          "fn": "AiReplyService.polish(text, tone)"
+        },
+        {
+          "id": "p4",
+          "actor": "external",
+          "text": "调用大模型",
+          "fn": "LLM chat completion"
+        },
+        {
+          "id": "p5",
+          "actor": "user",
+          "text": "「替换到回复框」",
+          "node": "d-apply"
+        }
+      ]
+    }
+  ],
+  "backend": [
+    {
+      "id": "m-ticket",
+      "name": "TicketController",
+      "kind": "controller",
+      "items": [
+        {
+          "id": "b-get",
+          "kind": "api",
+          "name": "GET /api/tickets/:id"
+        },
+        {
+          "id": "b-reply",
+          "kind": "api",
+          "name": "POST /api/tickets/:id/replies",
+          "note": "body: { body, aiDraftId? }",
+          "change": "modified",
+          "before": {
+            "note": "body: { body }"
+          }
+        },
+        {
+          "id": "b-draft",
+          "kind": "api",
+          "name": "GET /api/tickets/:id/ai-draft",
+          "change": "added"
+        },
+        {
+          "id": "b-similar",
+          "kind": "api",
+          "name": "GET /api/tickets/:id/similar",
+          "change": "added"
+        }
+      ]
+    },
+    {
+      "id": "m-ai",
+      "name": "AiReplyService",
+      "kind": "service",
+      "change": "added",
+      "items": [
+        {
+          "id": "ai-draft-fn",
+          "kind": "function",
+          "name": "draft(ticket): Draft",
+          "note": "读对话、订单、知识库"
+        },
+        {
+          "id": "ai-polish-fn",
+          "kind": "function",
+          "name": "polish(text, tone): string"
+        },
+        {
+          "id": "ai-cfg",
+          "kind": "config",
+          "name": "AI_PROVIDER / AI_MODEL"
+        }
+      ]
+    },
+    {
+      "id": "m-quick",
+      "name": "QuickReplyService",
+      "kind": "service",
+      "change": "removed",
+      "note": "快捷回复下线",
+      "items": [
+        {
+          "id": "qr-api",
+          "kind": "api",
+          "name": "GET / POST /api/quick-replies"
+        }
+      ]
+    },
+    {
+      "id": "m-reply",
+      "name": "Reply",
+      "kind": "model",
+      "items": [
+        {
+          "id": "f-body",
+          "kind": "field",
+          "name": "body: string"
+        },
+        {
+          "id": "f-draft",
+          "kind": "field",
+          "name": "aiDraftId?: string",
+          "change": "added"
+        }
+      ]
+    }
+  ]
+}
