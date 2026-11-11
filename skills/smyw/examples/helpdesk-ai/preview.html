@@ -566,7 +566,7 @@ let S = loadState() || freshState();
 let undoStack = [];
 let redoStack = [];
 const uiSaved = readJSON(KEY + ':ui') || {};
-const ui = { tab: ['canvas', 'flows', 'backend', 'feedback'].indexOf(uiSaved.tab) >= 0 ? uiSaved.tab : 'canvas', page: uiSaved.page, mode: 'view', sel: null, unit: null, cam: null, showLinks: false, play: null, showFn: false, showComp: false, fade: false, space: false, panMoved: false, overlayOpen: null, includeSpec: true, confirmReset: false, toast: null };
+const ui = { tab: ['canvas', 'flows', 'backend', 'feedback'].indexOf(uiSaved.tab) >= 0 ? uiSaved.tab : 'canvas', page: uiSaved.page, mode: 'view', sel: null, unit: null, cam: null, showLinks: false, play: null, showFn: false, showComp: false, fade: false, space: false, panMoved: false, overlayOpen: null, includeSpec: false, confirmReset: false, toast: null };
 if (!pageById(ui.page)) { const first = S.spec.pages.find((p) => pageStatus(p) !== 'unchanged') || S.spec.pages[0]; ui.page = first ? first.id : null; }
 let drag = null;
 let dropEl = null;
@@ -2095,28 +2095,79 @@ function renderFeedback() {
         h('button', { class: 'primary', onclick: copyFeedback }, '复制反馈'),
         h('button', { class: 'ok' + (S.approved ? ' on' : ''), onclick: () => mutate(() => { S.approved = !S.approved; return null; }), title: '没有意见或意见不影响方向时勾选，Agent 会开始实现' }, S.approved ? '✓ 已确认方案' : '确认方案，可以开始做'),
         h('button', { onclick: () => download('feedback.md', buildMarkdown(ui.includeSpec), 'text/markdown'), title: '部分预览环境（沙箱）不允许下载' }, '下载 .md')),
-      h('label', { class: 'hint', style: 'display:flex;gap:6px;align-items:center;margin-bottom:8px' }, h('input', { type: 'checkbox', checked: ui.includeSpec, style: 'width:auto', onchange: (e) => { ui.includeSpec = e.target.checked; render(); } }), '附带你修改后的完整方案 JSON（在「编辑方案」里改过结构时请保留勾选）'),
+      h('label', { class: 'hint', style: 'display:flex;gap:6px;align-items:center;margin-bottom:8px' }, h('input', { type: 'checkbox', checked: ui.includeSpec, style: 'width:auto', onchange: (e) => { ui.includeSpec = e.target.checked; render(); } }), '另外附带完整方案 JSON（备用：一般不需要；Agent 说补丁应用不上时再勾选）'),
       h('textarea', { class: 'md', id: 'smyw-out', 'data-f': 'smyw-out', readonly: true, value: md, onfocus: (e) => e.target.select() })));
 }
 function answersList() {
   return S.spec.questions.map((q, i) => { const qq = typeof q === 'string' ? { q: q } : q; const key = qq.id || String(i); return { id: key, question: qq.q || qq.question || '', answer: S.answers[key] || '' }; }).filter((a) => a.answer);
 }
-function cleanSpec() {
-  const sp = clone(S.spec);
+function stripSpec(sp) {
   const strip = (o) => {
     if (Array.isArray(o)) { o.forEach(strip); return; }
     if (!o || typeof o !== 'object') return;
     Object.keys(o).forEach((k) => { if (k.charAt(0) === '_' || (k === 'change' && o[k] === 'unchanged')) delete o[k]; else strip(o[k]); });
   };
   strip(sp);
+  return sp;
+}
+function cleanSpec() {
+  const sp = stripSpec(clone(S.spec));
   sp.basedOnVersion = BASE.version;
   return sp;
 }
+/* ---- node-level patch (smyw-patch@1): what the user changed, relative to the spec the agent wrote.
+ * Every id-bearing object (page, node, flow, step, backend module / item) is addressed by id.
+ * ops: del {id} · move {id,parent,key} · add {parent,key,node} · set {id,set,unset} · order {parent,key,ids} · top {set,unset}
+ * parent "#spec" = the spec itself; key = pages | flows | backend | root | overlays | children | steps | items. */
+const PATCH_SKIP_TOP = new Set(['pages', 'flows', 'backend', 'version', 'basedOnVersion']);
+function flatSpec(sp) {
+  const nodes = new Map(), lists = new Map();
+  const put = (o, kind, parent, key) => {
+    if (!o || typeof o !== 'object' || o.id == null) return;
+    const id = String(o.id), fields = {};
+    const own = kind === 'page' ? ['root', 'overlays'] : kind === 'node' ? ['children'] : kind === 'flow' ? ['steps'] : kind === 'mod' ? ['items'] : [];
+    Object.keys(o).forEach((k) => { if (own.indexOf(k) < 0) fields[k] = o[k]; });
+    nodes.set(id, { kind: kind, parent: parent, key: key, fields: fields, obj: o });
+    const kids = (k, list, ck) => { if (!Array.isArray(list)) return; lists.set(id + ' ' + k, list.map((x) => String(x.id))); list.forEach((x) => put(x, ck, id, k)); };
+    if (kind === 'page') { if (o.root) put(o.root, 'node', id, 'root'); kids('overlays', o.overlays, 'node'); }
+    else if (kind === 'node') kids('children', o.children, 'node');
+    else if (kind === 'flow') kids('steps', o.steps, 'step');
+    else if (kind === 'mod') kids('items', o.items, 'item');
+  };
+  [['pages', 'page'], ['flows', 'flow'], ['backend', 'mod']].forEach((x) => { const list = sp[x[0]] || []; lists.set('#spec ' + x[0], list.map((o) => String(o.id))); list.forEach((o) => put(o, x[1], '#spec', x[0])); });
+  const top = {}; Object.keys(sp).forEach((k) => { if (!PATCH_SKIP_TOP.has(k)) top[k] = sp[k]; });
+  return { nodes: nodes, lists: lists, top: top };
+}
+function fieldDiff(a, b) {
+  const set = {}, unset = [];
+  Object.keys(b).forEach((k) => { if (!same(a[k], b[k])) set[k] = b[k]; });
+  Object.keys(a).forEach((k) => { if (!(k in b)) unset.push(k); });
+  return Object.keys(set).length || unset.length ? { set: set, unset: unset } : null;
+}
+function specPatch() {
+  const A = flatSpec(stripSpec(normalize(clone(BASE)))), B = flatSpec(stripSpec(clone(S.spec)));
+  const ops = [];
+  const isNew = (id) => id !== '#spec' && !A.nodes.has(id);
+  A.nodes.forEach((a, id) => { if (!B.nodes.has(id) && (a.parent === '#spec' || B.nodes.has(a.parent))) ops.push({ op: 'del', id: id }); });
+  B.nodes.forEach((b, id) => {
+    const a = A.nodes.get(id);
+    if (isNew(b.parent)) return;
+    if (!a) { ops.push({ op: 'add', parent: b.parent, key: b.key, node: clone(b.obj) }); return; }
+    if (a.parent !== b.parent || a.key !== b.key) ops.push({ op: 'move', id: id, parent: b.parent, key: b.key });
+    const d = fieldDiff(a.fields, b.fields);
+    if (d) { const op = { op: 'set', id: id, set: d.set }; if (d.unset.length) op.unset = d.unset; ops.push(op); }
+  });
+  B.lists.forEach((ids, k) => { const parent = k.split(' ')[0]; if (isNew(parent)) return; if (!same(A.lists.get(k) || null, ids)) ops.push({ op: 'order', parent: parent, key: k.split(' ')[1], ids: ids }); });
+  const t = fieldDiff(A.top, B.top);
+  if (t) { const op = { op: 'top', set: t.set }; if (t.unset.length) op.unset = t.unset; ops.push(op); }
+  return { format: 'smyw-patch@1', base: BASE.version, ops: ops };
+}
 function exportJSON() {
-  return { format: 'smyw-feedback@1', title: S.spec.title, baseVersion: BASE.version, stage: S.spec.stage, exportedAt: new Date().toISOString(), approved: !!S.approved, global: S.global, answers: answersList(), comments: S.comments, ops: S.ops, revisedSpec: cleanSpec() };
+  return { format: 'smyw-feedback@1', title: S.spec.title, baseVersion: BASE.version, stage: S.spec.stage, exportedAt: new Date().toISOString(), approved: !!S.approved, global: S.global, answers: answersList(), comments: S.comments, ops: S.ops, patch: specPatch(), revisedSpec: cleanSpec() };
 }
 function buildMarkdown(withSpec) {
   const sp = S.spec, L = [], g = S.global;
+  const patch = specPatch();
   L.push('# 原型反馈：' + sp.title, '');
   L.push('> 基于方案 v' + BASE.version + '（' + STAGES[sp.stage] + '）· 导出于 ' + new Date().toLocaleString() + ' · 批注 ' + S.comments.length + ' 条 · 方案修改 ' + S.ops.length + ' 处', '');
   if (S.approved) L.push('**✅ 用户已确认方案' + (S.comments.length || S.ops.length ? '（同时附带以下意见，请一并处理）' : '，可以开始实现') + '**', '');
@@ -2137,10 +2188,11 @@ function buildMarkdown(withSpec) {
   if (S.ops.length) { L.push('## 用户直接对方案做的修改（按操作顺序）'); S.ops.forEach((o, i) => L.push((i + 1) + '. ' + o.desc)); L.push(''); }
   if (!S.comments.length && !S.ops.length && !g.tags.length && !g.text && !ans.length && !S.approved) L.push('（暂无反馈）', '');
   L.push('## 给 Agent 的处理说明',
-    '- revisedSpec 是用户调整后的完整方案（已相对「改动前」重新标注 added/removed/modified，移动用 movedFrom/movedTo 关联）。以它为基础更新 spec，version + 1，重新构建预览。',
+    patch.ops.length ? '- 把这份反馈原样保存为 .smyw/<dir>/feedback-v' + BASE.version + '.md，运行 node <skill>/scripts/apply-feedback.mjs <这份 md> <spec.json>：它把末尾的 smyw-patch（用户对 v' + BASE.version + ' 的结构修改，已重新标注 added/removed/modified、movedFrom/movedTo）应用到 spec.json，version + 1。不要凭上面的操作描述手工重放。' : '- 用户没有改方案结构：直接在现有 spec 上落实批注，version + 1。',
     '- 「必须改」全部落实；「建议」尽量采纳，不采纳要说明理由；「疑问」先回答再动手。',
     '- 线框只表达结构和交互，不代表视觉样式；样式/风格类意见在实现时按项目现有设计规范落实。', '');
-  if (withSpec) L.push('<details><summary>revisedSpec（修改后的完整方案 JSON）</summary>', '', FENCE + 'json', JSON.stringify(cleanSpec(), null, 1), FENCE, '', '</details>', '');
+  if (patch.ops.length) L.push('<details><summary>smyw-patch（相对 v' + BASE.version + ' 的结构修改，' + patch.ops.length + ' 条）</summary>', '', FENCE + 'json', JSON.stringify(patch), FENCE, '', '</details>', '');
+  if (withSpec) L.push('<details><summary>revisedSpec（备用：修改后的完整方案 JSON）</summary>', '', FENCE + 'json', JSON.stringify(cleanSpec()), FENCE, '', '</details>', '');
   return L.join('\n');
 }
 async function copyText(s) {
@@ -2200,7 +2252,7 @@ window.smyw = {
     comment: (target, category, severity, text) => addComment(target, category, severity, text)
   },
   select: (sel) => { ui.sel = sel; render(); },
-  exportJSON: exportJSON, buildMarkdown: buildMarkdown, copyFeedback: copyFeedback, storageOk: STORAGE_OK
+  exportJSON: exportJSON, buildMarkdown: buildMarkdown, specPatch: specPatch, copyFeedback: copyFeedback, storageOk: STORAGE_OK
 };
 })();
 </script>

@@ -202,7 +202,7 @@ node skills/smyw/scripts/build.mjs skills/smyw/examples/helpdesk-ai/spec.json
 
 ![反馈页](docs/screenshots/16-feedback.png)
 
-点「复制反馈」得到一段 Markdown，末尾附带你改完后的完整方案 JSON，粘贴到对话里发给 Agent 即可。没意见就点「确认方案，可以开始做」。
+点「复制反馈」得到一段 Markdown，粘贴到对话里发给 Agent 即可。你在图上做的结构修改只以**补丁**形式附在末尾（只含改动，按 id 定位），比附带整份方案小好几倍，Agent 用脚本应用，不用把整份方案读一遍。没意见就点「确认方案，可以开始做」。
 
 ![复制反馈](docs/screenshots/17-copy-feedback.png)
 
@@ -225,7 +225,7 @@ node skills/smyw/scripts/build.mjs skills/smyw/examples/helpdesk-ai/spec.json
 Agent 会把你粘贴的反馈存成 `feedback-v<N>.md`，然后：
 
 ```bash
-# 取出反馈里的完整方案，旧 spec 备份为 spec-v<N>.json，写入 version + 1
+# 应用反馈里的补丁，旧 spec 备份为 spec-v<N>.json，写入 version + 1（版本对不上会拒绝）
 node skills/smyw/scripts/apply-feedback.mjs .smyw/<dir>/feedback-v1.md .smyw/<dir>/spec.json
 # 落实批注后重新生成
 node skills/smyw/scripts/build.mjs .smyw/<dir>/spec.json

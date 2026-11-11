@@ -140,15 +140,25 @@ console.log('comments & feedback');
 await ev('smyw.op.comment({ kind: "node", page: "task-list", id: "user-menu", side: "after" }, "样式/风格", "建议", "用户菜单改成头像"); smyw.op.comment({ kind: "step", flow: "flow-create", id: "c6", side: "after" }, "流程/逻辑", "疑问", "task_tags 要加唯一索引吗？"); return true');
 await ev('const s = smyw.state; s.global.tags.push("和现有页面不统一"); s.global.text = "整体太像后台"; s.answers["q-color"] = "需要"; smyw.setTab("feedback"); return true');
 const md = await ev('return smyw.buildMarkdown(true)');
-check('markdown contains global opinion, answers, comments, ops, revisedSpec', /和现有页面不统一/.test(md) && /标签需要支持自定义颜色吗？/.test(md) && /用户菜单改成头像/.test(md) && /改成弹窗/.test(md) && /revisedSpec/.test(md), md.slice(0, 300));
+check('markdown contains global opinion, answers, comments, ops, revisedSpec', /和现有页面不统一/.test(md) && /标签需要支持自定义颜色吗？/.test(md) && /用户菜单改成头像/.test(md) && /改成弹窗/.test(md) && /smyw-patch/.test(md) && /revisedSpec/.test(md), md.slice(0, 300));
 await shot('05-feedback');
 const copied = await ev('const ok = await smyw.copyFeedback(); const out = document.getElementById("smyw-out"); return { ok, selected: out ? out.selectionEnd - out.selectionStart : -1, len: out ? out.value.length : -1 }');
 check('copy feedback either copies or selects the whole text', copied.ok === true || (copied.selected === copied.len && copied.len > 0), copied);
 const pasted = await ev('return document.getElementById("smyw-out").value');
+const fullMd = await ev('return smyw.buildMarkdown(true)');
+const fbx = await ev('return smyw.exportJSON()');
+check('copied feedback carries only the patch by default (much smaller than the full spec)', /smyw-patch/.test(pasted) && !/revisedSpec（备用/.test(pasted) && pasted.length * 2 < fullMd.length, { pasted: pasted.length, full: fullMd.length, ops: fbx.patch.ops.length });
 writeFileSync(join(work, 'feedback-v1.md'), pasted);
+// the patch applied to the spec on disk must give exactly the full revised spec
+const canon = (o) => Array.isArray(o) ? o.map(canon) : o && typeof o === 'object' ? Object.keys(o).filter((k) => !['version', 'basedOnVersion'].includes(k) && !(Array.isArray(o[k]) && !o[k].length)).sort().reduce((r, k) => (r[k] = canon(o[k]), r), {}) : o;
+const dry = JSON.parse(execFileSync('node', [join(skill, 'scripts', 'apply-feedback.mjs'), join(work, 'feedback-v1.md'), join(work, 'spec.json'), '--dry-run']).toString().split('\n').slice(1).join('\n'));
+check('applying the patch reproduces the full revised spec exactly', JSON.stringify(canon(dry)) === JSON.stringify(canon(fbx.revisedSpec)));
 execFileSync('node', [join(skill, 'scripts', 'apply-feedback.mjs'), join(work, 'feedback-v1.md'), join(work, 'spec.json')], { stdio: 'ignore' });
 const v2spec = JSON.parse(readFileSync(join(work, 'spec.json'), 'utf8'));
 check('apply-feedback.mjs turns the pasted Markdown into spec v2', v2spec.version === 2 && v2spec.pages.length === 3 && !JSON.stringify(v2spec).includes('"_um"'));
+writeFileSync(join(work, 'stale.md'), pasted);
+let staleErr = ''; try { execFileSync('node', [join(skill, 'scripts', 'apply-feedback.mjs'), join(work, 'stale.md'), join(work, 'spec.json'), '--dry-run'], { stdio: 'pipe' }); } catch (err) { staleErr = String(err.stderr); }
+check('a patch made on an older version is refused', /v1/.test(staleErr) && /v2/.test(staleErr), staleErr);
 
 console.log('round trip: v2 → build → render');
 execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(work, 'spec.json')], { stdio: 'ignore' });
@@ -208,7 +218,7 @@ const probe = '<script>window.addEventListener("error", (e) => parent.postMessag
   'const rb = [...document.querySelectorAll("button")].find((b) => b.textContent === "重置"); rb.click(); r.resetAsk = [...document.querySelectorAll("button")].some((b) => b.textContent === "再点一次确认重置"); r.opsAfterFirstClick = m.state.ops.length;' +
   '[...document.querySelectorAll("button")].find((b) => b.textContent === "再点一次确认重置").click(); r.opsAfterReset = m.state.ops.length;' +
   'm.op.convert("task-list", "task-form-card", "modal"); const ok = await m.copyFeedback(); const out = document.getElementById("smyw-out");' +
-  'r.copy = ok; r.selectedAll = !!out && out.selectionStart === 0 && out.selectionEnd === out.value.length && out.value.includes("revisedSpec"); parent.postMessage(r, "*"); }' +
+  'r.copy = ok; r.selectedAll = !!out && out.selectionStart === 0 && out.selectionEnd === out.value.length && out.value.includes("smyw-patch"); parent.postMessage(r, "*"); }' +
   'catch (e) { parent.postMessage({ err: e.message }, "*"); } }, 900);<\/script>';
 const sandboxed = readFileSync(join(skill, 'examples', 'task-tags', 'preview.html'), 'utf8').replace('</body>', probe + '</body>');
 const payload = Buffer.from(JSON.stringify({ html: sandboxed, assets: [] }), 'utf8').toString('base64');

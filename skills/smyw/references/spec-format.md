@@ -159,11 +159,25 @@ action：
 ## 批注                                     ← 1. **[必须改][交互方式]** 页面「任务列表」› 改动后 › … #btn-new
 ## 用户直接对方案做的修改（按操作顺序）       ← 每条一句话，说明意图
 ## 给 Agent 的处理说明
-<details><summary>revisedSpec …</summary>
+<details><summary>smyw-patch（相对 v1 的结构修改，N 条）</summary>
 ```json
-{ …用户改完后的完整 spec，格式与输入相同，另带 basedOnVersion… }
+{"format":"smyw-patch@1","base":1,"ops":[ … ]}
 ```
 </details>
+<details><summary>revisedSpec（备用：完整方案）</summary> …   ← 只在用户勾选时出现
 ~~~
 
-`scripts/apply-feedback.mjs` 会取出最后的 revisedSpec 代码块，写成下一版 spec。
+### smyw-patch@1
+
+`base` 是补丁基于的 spec 版本，必须等于磁盘上 spec.json 的 version，否则脚本拒绝应用。节点（页面、元素、弹层、流程、步骤、后端模块和条目）都按 `id` 定位；`parent` 为 `"#spec"` 表示 spec 本身。
+
+| op | 字段 | 含义 |
+|---|---|---|
+| `del` | `id` | 删掉这个节点（连同子节点） |
+| `move` | `id` `parent` `key` | 挪到另一个容器（key：pages / flows / backend / root / overlays / children / steps / items） |
+| `add` | `parent` `key` `node` | 新增节点，`node` 是带子节点的完整内容 |
+| `set` | `id` `set` `unset` | 改这个节点自己的字段（不含子节点），`unset` 是要删掉的字段名 |
+| `order` | `parent` `key` `ids` | 这个容器里子节点的最终顺序 |
+| `top` | `set` `unset` | 改 spec 顶层字段（title、summary…） |
+
+`scripts/apply-feedback.mjs` 按 del → move → add → set → order → top 的顺序应用。补丁和「完整方案」应用后的结果完全一致（端到端测试里有校验）。
