@@ -11,6 +11,7 @@ const assets = join(here, '..', 'assets');
 const TYPES = new Set(['page', 'section', 'row', 'col', 'grid', 'card', 'form', 'list', 'item', 'nav', 'tabs', 'header', 'footer', 'sidebar', 'toolbar', 'panel', 'group', 'modal', 'drawer', 'popover', 'menu', 'button', 'link', 'input', 'textarea', 'select', 'checkbox', 'radio', 'toggle', 'upload', 'heading', 'text', 'image', 'table', 'chart', 'stat', 'badge', 'tag', 'icon', 'divider', 'placeholder']);
 const OVERLAY = new Set(['modal', 'drawer', 'popover', 'menu']);
 const CHANGES = new Set(['added', 'removed', 'modified', 'unchanged']);
+const IA_ACTIONS = new Set(['open', 'close', 'navigate', 'toggle', 'show', 'hide', 'state', 'back']);
 const ACTORS = new Set(['user', 'frontend', 'backend', 'db', 'external', 'system']);
 
 function usage(code) {
@@ -76,6 +77,7 @@ function validate(spec) {
   if (spec.stage && !['prototype', 'implementing', 'done'].includes(spec.stage)) warnings.push('stage 应为 prototype / implementing / done，收到 "' + spec.stage + '"');
   for (const k of ['pages', 'flows', 'backend', 'changes', 'questions']) if (spec[k] !== undefined && !Array.isArray(spec[k])) errors.push(k + ' 必须是数组');
   const ids = new Map();
+  const iaRefs = [];
   const reg = (o, where) => {
     if (o.id == null) return;
     const k = String(o.id);
@@ -114,6 +116,20 @@ function validate(spec) {
       if (n.movedFrom && n.change !== 'added') warnings.push(where + '：有 movedFrom 的元素应标为 change=added');
       if (n.movedTo && n.change !== 'removed') warnings.push(where + '：有 movedTo 的元素应标为 change=removed');
       for (const key of ['items', 'columns']) if (n[key] !== undefined && !Array.isArray(n[key])) errors.push(where + '：' + key + ' 必须是数组');
+      if (n.on !== undefined) {
+        if (!Array.isArray(n.on)) errors.push(where + '：on 必须是数组，如 [{ "action": "open", "target": "xxx" }]');
+        else n.on.forEach((x) => {
+          const act = x && (x.action || x.do);
+          if (!act || !IA_ACTIONS.has(act)) errors.push(where + '：on 的 action 只能是 open / close / navigate / toggle / show / hide / state / back，收到 "' + act + '"');
+          else if (['open', 'navigate', 'toggle', 'show', 'hide'].includes(act) && !x.target) errors.push(where + '：action ' + act + ' 需要 target');
+          if (x && x.target) iaRefs.push([String(x.target), act, where, x.state]);
+          if (act === 'state' && !x.target) iaRefs.push([String(n.id), act, where, x.state]);
+        });
+      }
+      if (n.hidden !== undefined && typeof n.hidden !== 'boolean') errors.push(where + '：hidden 必须是 true / false');
+      if (n.states !== undefined && (!n.states || typeof n.states !== 'object' || Array.isArray(n.states))) errors.push(where + '：states 必须是对象，如 { "done": { "label": "已验收" } }');
+      if (n.state != null && !(n.states && n.states[n.state])) warnings.push(where + '：state "' + n.state + '" 不在 states 里');
+      if (!n.on && !n.hidden && !n.states && /点了.{0,8}才|点击后.{0,4}出现|才出现|点不开|可折叠|点开看/.test(String(n.label || '') + String(n.text || ''))) warnings.push(where + '：文字里在描述交互（「…才出现」「点不开」「可折叠」），改用 on / hidden / states，用户在「▶ 演示」里就能真的点');
       if (n.component != null && typeof n.component !== 'string') errors.push(where + '：component 必须是字符串（代码里的组件名 / 文件）');
       if (n.type === 'placeholder' && /不变|同上|其余|省略/.test(String(n.label || ''))) placeholders.push(where);
       (Array.isArray(n.children) ? n.children : []).forEach((c) => walk(c, n, where));
@@ -125,13 +141,21 @@ function validate(spec) {
       if (o && o.type && !OVERLAY.has(o.type)) warnings.push(pw + ' › 弹层 #' + o.id + '：overlays 里的元素通常是 modal / drawer / popover / menu');
       if (o && (!o.trigger || (Array.isArray(o.trigger) && !o.trigger.length))) warnings.push(pw + ' › 弹层「' + (o.label || o.id) + '」：没有 trigger，用户看不出它由哪个按钮打开');
     });
-    for (const [t, where] of triggers) if (!pageIds.has(t)) warnings.push(where + '：trigger "' + t + '" 在本页面找不到');
+    for (const [t, where] of triggers) if (!pageIds.has(t)) iaRefs.push([t, 'trigger', where]);
     if (placeholders.length) warnings.push(pw + '：有 ' + placeholders.length + ' 个「（不变）」占位框。没改动的模块也要画成真实模块：写它在界面上的名字 + component，不展开 children 即可（会显示「内容不变，未展开」）');
     if (!JSON.stringify(p.root).includes('"component"')) warnings.push(pw + '：没有任何节点写 component。顶层区域（侧栏、主栏、面板…）请标上代码里的组件名，用户才能把框和真实模块对上');
     for (const [t, where, k] of moves) if (!pageIds.has(t)) warnings.push(where + '：' + k + ' "' + t + '" 在本页面找不到');
   }
   const flows = Array.isArray(spec.flows) ? spec.flows : [];
   const allNodeIds = new Set();
+  const nodeById = new Map();
+  for (const p of pages) { const walk = (n) => { if (n && typeof n === 'object' && n.id != null) nodeById.set(String(n.id), n); if (n && typeof n === 'object') (Array.isArray(n.children) ? n.children : []).forEach(walk); }; walk(p.root); (Array.isArray(p.overlays) ? p.overlays : []).forEach(walk); }
+  for (const [t, act, where, st] of iaRefs) {
+    if (act === 'navigate') { if (!pages.some((p) => p.id === t)) warnings.push(where + '：navigate 的 target "' + t + '" 不是页面 id'); continue; }
+    const tn = nodeById.get(t);
+    if (!tn) { warnings.push(where + '：' + (act === 'trigger' ? 'trigger' : act + ' 的 target') + ' "' + t + '" 找不到'); continue; }
+    if (act === 'state' && st != null && !(tn.states && tn.states[st])) warnings.push(where + '：目标 #' + t + ' 没有状态 "' + st + '"（先在它的 states 里写上）');
+  }
   for (const p of pages) { const walk = (n) => { if (n && typeof n === 'object') { if (n.id != null) allNodeIds.add(String(n.id)); (Array.isArray(n.children) ? n.children : []).forEach(walk); } }; walk(p.root); (Array.isArray(p.overlays) ? p.overlays : []).forEach(walk); }
   for (const f of flows) {
     const fw = '流程「' + (f.name || f.id || '?') + '」';

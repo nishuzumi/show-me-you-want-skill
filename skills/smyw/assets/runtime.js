@@ -89,7 +89,7 @@ let S = loadState() || freshState();
 let undoStack = [];
 let redoStack = [];
 const uiSaved = readJSON(KEY + ':ui') || {};
-const ui = { tab: ['canvas', 'flows', 'backend', 'feedback'].indexOf(uiSaved.tab) >= 0 ? uiSaved.tab : 'canvas', page: uiSaved.page, mode: 'view', sel: null, unit: null, cam: null, showFn: false, showComp: false, fade: false, space: false, panMoved: false, overlayOpen: null, includeSpec: true, confirmReset: false, toast: null };
+const ui = { tab: ['canvas', 'flows', 'backend', 'feedback'].indexOf(uiSaved.tab) >= 0 ? uiSaved.tab : 'canvas', page: uiSaved.page, mode: 'view', sel: null, unit: null, cam: null, showLinks: false, play: null, showFn: false, showComp: false, fade: false, space: false, panMoved: false, overlayOpen: null, includeSpec: true, confirmReset: false, toast: null };
 if (!pageById(ui.page)) { const first = S.spec.pages.find((p) => pageStatus(p) !== 'unchanged') || S.spec.pages[0]; ui.page = first ? first.id : null; }
 let drag = null;
 let dropEl = null;
@@ -177,6 +177,31 @@ function afterClone(o, map) {
 /* trigger may be one id or an array of ids (several buttons open the same overlay). */
 function trigList(v) { const t = v && v.trigger; return t == null || t === '' ? [] : (Array.isArray(t) ? t : [t]).map(String); }
 function trigValue(list) { return !list.length ? null : list.length === 1 ? list[0] : list; }
+/* Interactions (prototype): node.on = [{ action, target, state }], node.hidden, node.states + node.state.
+ * Overlays' trigger lists are folded in as { action: 'open' }. */
+const IA_VERB = { open: '打开', close: '关闭', navigate: '跳到', toggle: '展开 / 收起', show: '显示', hide: '隐藏', state: '切换', back: '返回上一步' };
+const IA_SHORT = { open: '打开', close: '关闭', navigate: '跳转', toggle: '展开/收起', show: '显示', hide: '隐藏', state: '切换', back: '返回' };
+function nodeOn(n) { return Array.isArray(n && n.on) ? n.on.filter((x) => x && typeof x === 'object').map((x) => Object.assign({}, x, { action: x.action || x.do || 'open' })) : []; }
+function interactionsOf(p, n, side) {
+  const out = nodeOn(n);
+  S.spec.pages.forEach((q) => q.overlays.forEach((x) => {
+    if (x === n || !visible(x, side) || !trigList(view(x, side)).includes(n.id)) return;
+    if (!out.some((i) => i.action === 'open' && i.target === x.id)) out.push({ action: 'open', target: x.id });
+  }));
+  return out;
+}
+function stateNames(n) { return n && n.states && typeof n.states === 'object' && !Array.isArray(n.states) ? Object.keys(n.states) : []; }
+function curState(n, ctx) { if (ctx === 'play' && ui.play && ui.play.st[n.id] !== undefined) return ui.play.st[n.id]; return n.state || null; }
+function withState(n, v, ctx) { const s = curState(n, ctx); const ov = s && stateNames(n).indexOf(s) >= 0 ? n.states[s] : null; return ov && typeof ov === 'object' ? Object.assign({}, v, ov) : v; }
+function playVisible(n) { const v = ui.play ? ui.play.vis[n.id] : undefined; return v === undefined ? !n.hidden : v; }
+function isRevealed(n) { return !!(n && n.hidden && showersOf(n.id).length); }
+function showersOf(id) { const out = []; S.spec.pages.forEach((p) => entries(p).forEach((e) => { if (nodeOn(e.n).some((i) => i.target === id && /^(toggle|show)$/.test(i.action))) out.push(e.n); })); return out; }
+function iaTargetName(i) {
+  if (i.action === 'navigate') { const q = pageById(i.target); return q ? '页面「' + pageName(q) + '」' : '#' + i.target; }
+  if (!i.target) return i.action === 'close' ? '所在的弹层' : '';
+  const f = findNodeAnywhere(i.target); return f ? nlabel(f.e.n) : '#' + i.target;
+}
+function iaText(i) { return '点击 → ' + (IA_VERB[i.action] || i.action) + ' ' + iaTargetName(i) + (i.action === 'state' && i.state ? ' 为「' + i.state + '」' : '') + (i.note ? '（' + i.note + '）' : ''); }
 function remapTriggers(p, map) { const vis = afterVisibleIds(p); entries(p).forEach((e) => { const n = e.n; const l = trigList(n); if (vis.has(n.id) && l.some((t) => map[t])) setField(n, 'trigger', trigValue(l.map((t) => map[t] || t))); }); }
 function clearTriggers(p, ids) { const vis = afterVisibleIds(p); entries(p).forEach((e) => { const l = trigList(e.n); if (vis.has(e.n.id) && l.some((t) => ids.has(t))) setField(e.n, 'trigger', trigValue(l.filter((t) => !ids.has(t)))); }); }
 function insertAt(tgt, node, pos) {
@@ -187,7 +212,7 @@ function insertAt(tgt, node, pos) {
 
 // ------------------------------------------------------------------ labels
 function tname(t) { return TYPE_LABEL[t] || t || '元素'; }
-function nlabel(n) { const s = short(n.label || n.text || n.fn || '', 20); return tname(n.type) + (s ? '「' + s + '」' : ''); }
+function nlabel(n) { const s = short(n.label || n.text || (Array.isArray(n.items) && n.items.length ? itemText(n.items[0]) : '') || n.fn || '', 20); return tname(n.type) + (s ? '「' + s + '」' : ''); }
 function ref(n) { return nlabel(n) + ' #' + n.id; }
 function pageName(p) { return (p && p.name) || (p && p.id) || ''; }
 function stepLabel(s) { return '「' + short(s.text || s.fn || s.id, 24) + '」'; }
@@ -543,27 +568,39 @@ function renderWF(n, p, o) {
   let eff = side;
   if (side === 'merged') { if (o.ghost && n.change === 'added') return null; eff = (o.ghost || n.change === 'removed') ? 'before' : 'after'; }
   else if (!visible(n, side)) return null;
-  const v = view(n, eff);
+  if (o.ctx === 'play' && !playVisible(n)) return null;
+  if (o.ctx === 'canvas' && !o.asPanel && isRevealed(n)) {
+    const sv = view(n, eff);
+    const slot = h('div', { class: 'wf wf-slot', 'data-kind': 'node', 'data-id': n.id, 'data-side': eff, 'data-unit': o.unit || null, title: '点击后才出现，内容画在旁边的单独面板里' },
+      '⤷ ' + nlabel(sv) + ' · 点击 ' + showersOf(n.id).map((x) => '「' + short(x.label || x.text || x.id, 14) + '」').join('、') + ' 后在这里展开 →');
+    applyWidth(slot, sv.w, o.parentLayout);
+    return slot;
+  }
+  const v = withState(n, view(n, eff), o.ctx);
   const t = v.type, kids = v.children || [], cont = isCont(v);
   const layout = v.layout || (ROW_TYPES.has(t) ? 'row' : 'col');
   const isRoot = n === p.root;
   const ghost = o.ghost || (side === 'merged' && n.change === 'removed');
   const editing = ui.mode === 'edit' && o.ctx === 'canvas' && !ghost;
-  const trig = p.overlays.some((x) => (eff === 'after' ? visible(x, 'after') && trigList(x).includes(n.id) : visible(x, 'before') && trigList(view(x, 'before')).includes(n.id)));
-  const c = (o.whole || isRoot) ? null : chgOf(n, side);
+  const ias = interactionsOf(p, n, eff);
+  const trig = ias.length > 0;
+  const c = (o.whole || isRoot || (o.ctx === 'play' && !ui.play.marks)) ? null : chgOf(n, o.ctx === 'play' ? 'after' : side);
   let mark = '', unitHere = null;
   if (c) {
     if (o.ctx === 'canvas' && !o.unit) { mark = 'mk mk-' + c[0] + ' mk-u'; unitHere = n.id; }
     else mark = 'mk mk-' + c[0] + (o.ctx === 'canvas' ? ' mk-inner' : ' mk-d side-' + side);
   }
   const unit = o.unit || unitHere;
-  const cls = ['wf', 't-' + t, cont ? 'is-c lay-' + layout : 'is-leaf', INLINE.has(t) ? 'inline' : '', v.variant ? 'v-' + v.variant : '', trig ? 'is-trigger' : '', mark, (unit || o.whole) ? 'in-chg' : ''].filter(Boolean).join(' ');
+  const cls = ['wf', 't-' + t, cont ? 'is-c lay-' + layout : 'is-leaf', INLINE.has(t) ? 'inline' : '', v.variant ? 'v-' + v.variant : '', trig ? 'is-trigger' : '', mark, (unit || o.whole) ? 'in-chg' : '', n.hidden && o.ctx !== 'play' ? 'wf-cond' : ''].filter(Boolean).join(' ');
   const el = h('div', { class: cls, 'data-kind': 'node', 'data-id': n.id, 'data-side': eff, 'data-unit': unit, 'data-partner': n.movedFrom || n.movedTo || null, title: o.ctx === 'canvas' ? (n.note || null) : null });
+  if (o.ctx === 'play' && trig) { el.setAttribute('data-ia', '1'); el.setAttribute('data-pg', p.id); }
   applyWidth(el, v.w, o.parentLayout);
   if (layout === 'grid') el.style.setProperty('--cols', String(v.cols || 2));
   if (unitHere) { const u = UNIT_BY.get(n.id); el.append(h('span', { class: 'u-num u-' + c[0] }, String(u ? u.n : '?')), h('span', { class: 'u-tag u-' + c[0] }, c[1])); }
   else if (c && o.ctx === 'detail') el.append(h('span', { class: 'chg-tag chg-tag-' + c[0] + ' side-' + side }, c[1]));
-  if (v.component) el.append(h('span', { class: 'wf-comp', title: '代码里对应的组件 / 模块' }, v.component));
+  if (v.component && o.ctx !== 'play') el.append(h('span', { class: 'wf-comp', title: '代码里对应的组件 / 模块' }, v.component));
+  if (n.hidden && o.ctx !== 'play' && !o.asPanel) el.append(h('span', { class: 'cond-tag', title: '默认不显示' }, showersOf(n.id).length ? '点击后出现' : '按条件出现'));
+  if (stateNames(n).length && o.ctx !== 'play') el.append(h('span', { class: 'st-tag', title: '在演示模式里点一下可以切换' }, '⇄ ' + (stateNames(n).length + (n.state ? 0 : 1)) + ' 个状态'));
   el.append(...nodeBody(v, side));
   if (cont) {
     const box = h('div', { class: 'wf-children' });
@@ -572,10 +609,10 @@ function renderWF(n, p, o) {
     if (box.childNodes.length) el.append(box);
     else if (editing && !(ITEMS_TYPES.has(t) && v.items)) { box.append(h('div', { class: 'wf-empty' }, isRoot ? '空页面：把组件从组件库拖到这里' : '拖入组件')); el.append(box); }
     else if (isRoot) { box.append(h('div', { class: 'wf-empty' }, '（空）')); el.append(box); }
-    else if (!(ITEMS_TYPES.has(t) && v.items) && !v.text && n.change === 'unchanged' && !o.whole) el.append(h('div', { class: 'wf-same' }, '内容不变，未展开'));
+    else if (!(ITEMS_TYPES.has(t) && v.items) && !v.text && t !== 'item' && n.change === 'unchanged' && !o.whole) el.append(h('div', { class: 'wf-same' }, '内容不变，未展开'));
   }
   if (o.ctx === 'detail' && n.note && !isRoot && o.depth && c) el.append(h('div', { class: 'wf-note' }, n.note));
-  const b = cbadge('node', n.id, eff); if (b) el.append(b);
+  const b = o.ctx === 'play' ? null : cbadge('node', n.id, eff); if (b) el.append(b);
   if (editing && !isRoot) el.setAttribute('data-drag', '1');
   return el;
 }
@@ -589,10 +626,21 @@ function render() {
   ['main', 'inspector', 'cv-list'].forEach((id) => { const el = document.getElementById(id); if (el) keepScroll[id] = el.scrollTop; });
   const ae = document.activeElement;
   const fkey = ae && ae.dataset ? ae.dataset.f : null;
+  if (ui.play) {
+    const st0 = document.getElementById('pl-stage'); const sc = st0 && !ui.play.top ? st0.scrollTop : 0; ui.play.top = false;
+    const ps0 = document.getElementById('pl-side'); const ss = ps0 ? ps0.scrollTop : 0;
+    app.replaceChildren(...[renderHeader(), renderPlay(), ui.toast ? h('div', { class: 'toast' + (ui.toast.err ? ' err' : '') }, ui.toast.msg) : null].filter(Boolean));
+    fitPlay(); requestAnimationFrame(fitPlay);
+    const st1 = document.getElementById('pl-stage'); if (st1) st1.scrollTop = sc;
+    const ps1 = document.getElementById('pl-side'); if (ps1) ps1.scrollTop = ss;
+    if (fkey) { const el = document.querySelector('[data-f="' + fkey + '"]'); if (el) el.focus(); }
+    return;
+  }
   const canvas = ui.tab === 'canvas';
   const main = h('main', { class: 'main' + (canvas ? ' main-canvas' : ''), id: 'main', onclick: onMainClick, onmouseover: onMainOver }, renderTab());
   app.replaceChildren(...[renderHeader(), renderTabs(), renderBanners(), h('div', { class: 'body' }, main, canvas ? null : renderInspector()), ui.toast ? h('div', { class: 'toast' + (ui.toast.err ? ' err' : '') }, ui.toast.msg) : null].flat().filter(Boolean));
   Object.keys(keepScroll).forEach((id) => { const el = document.getElementById(id); if (el) el.scrollTop = keepScroll[id]; });
+  if (canvas) layoutPanels();
   applySel();
   if (canvas) { if (ui.cam) applyCam(); else requestAnimationFrame(() => fitCam(false, true)); requestAnimationFrame(drawLinks); }
   if (fkey) { const el = document.querySelector('[data-f="' + fkey + '"]'); if (el) el.focus(); }
@@ -605,7 +653,8 @@ function renderHeader() {
     h('span', { class: 'stage st-' + sp.stage }, STAGES[sp.stage]),
     h('span', { class: 'ver' }, 'v' + sp.version),
     h('div', { class: 'acts-top' },
-      h('div', { class: 'seg' },
+      h('button', { class: 'play-btn' + (ui.play ? ' on' : ''), onclick: () => (ui.play ? stopPlay() : startPlay()), title: '像 Figma 的演示模式一样点着试：弹窗、跳页、展开收起、切换状态' }, ui.play ? '■ 退出演示' : '▶ 演示'),
+      ui.play ? null : h('div', { class: 'seg' },
         h('button', { class: ui.mode === 'view' ? 'on' : null, onclick: () => setMode('view'), title: '浏览改动、点任意元素写批注' }, '查看 / 批注'),
         h('button', { class: ui.mode === 'edit' ? 'on' : null, onclick: () => setMode('edit'), title: '直接修改方案：拖动、增删、转为弹窗…' }, '编辑方案')),
       h('button', { disabled: !undoStack.length, onclick: undo, title: '撤销 (Ctrl+Z)' }, '↶ 撤销'),
@@ -657,7 +706,7 @@ function applySel() {
 }
 function unitEl(key) {
   const u = UNIT_BY.get(key); if (!u) return null;
-  return document.querySelector('#cv-world ' + (u.kind === 'page' ? '.cv-frame[data-page="' + CSS.escape(key) + '"]' : '[data-kind="node"][data-id="' + CSS.escape(key) + '"]'));
+  return document.querySelector('#cv-world ' + (u.kind === 'page' ? '.cv-frame[data-page="' + CSS.escape(key) + '"]' : '[data-kind="node"][data-id="' + CSS.escape(key) + '"]:not(.wf-slot)'));
 }
 function scrollToSel() {
   requestAnimationFrame(() => {
@@ -711,31 +760,58 @@ function focusNode(pid, id) {
 // ------------------------------------------------------------------ canvas: camera
 /* Curved connectors on the canvas: trigger element → the overlay (modal / drawer / menu / popover) it opens.
  * Drawn in world coordinates, so they pan and zoom with the canvas. */
-const LINK_COLOR = { added: '#18a058', removed: '#e5484d', modified: '#e2a400', unchanged: '#333' };
+const LINK_COLOR = { added: '#18a058', removed: '#e5484d', modified: '#e2a400', unchanged: '#333', nav: '#1f4fd8' };
+/* Interaction connectors (Figma "noodles"): trigger → overlay / page / element it changes. Drawn in world coordinates.
+ * Like Figma, they are hidden until something related is selected, unless「⇢ 全部交互」is on. */
 function drawLinks() {
   const w = worldEl(); if (!w) return;
   const old = document.getElementById('cv-links'); if (old) old.remove();
   const wr = w.getBoundingClientRect(); const k = wr.width / (w.offsetWidth || 1); if (!k) return;
   const NS = 'http://www.w3.org/2000/svg';
-  const mk = (tag, attrs) => { const e = document.createElementNS(NS, tag); Object.keys(attrs).forEach((a) => e.setAttribute(a, attrs[a])); return e; };
+  const mk = (tag, attrs) => { const e = document.createElementNS(NS, tag); Object.keys(attrs).forEach((x) => e.setAttribute(x, attrs[x])); return e; };
   const svg = mk('svg', { id: 'cv-links', class: 'cv-links', width: w.offsetWidth, height: w.offsetHeight });
   const defs = mk('defs', {});
   Object.keys(LINK_COLOR).forEach((c) => { const m = mk('marker', { id: 'cv-ah-' + c, viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse' }); m.append(mk('path', { d: 'M0,0 L10,5 L0,10 Z', fill: LINK_COLOR[c] })); defs.append(m); });
   svg.append(defs);
   const loc = (r) => ({ l: (r.left - wr.left) / k, t: (r.top - wr.top) / k, r: (r.right - wr.left) / k, b: (r.bottom - wr.top) / k });
+  const q = (root, sel) => root.querySelector(sel);
+  const sel = ui.sel, unit = ui.unit;
   let n = 0;
-  w.querySelectorAll('.cv-ov[data-ov]').forEach((ovEl) => {
-    const g = ovEl.closest('.cv-group'); if (!ovEl.dataset.trigger || !g) return;
-    ovEl.dataset.trigger.split(' ').forEach((tid) => {
-    const tEl = g.querySelector('.cv-frame [data-id="' + CSS.escape(tid) + '"]'); if (!tEl) return;
-    const a = loc(tEl.getBoundingClientRect()), b = loc(ovEl.getBoundingClientRect());
-    const x1 = a.r + 2, y1 = (a.t + a.b) / 2, x2 = b.l - 3, y2 = b.t + Math.min(36, (b.b - b.t) / 2);
-    const dx = Math.max(90, Math.abs(x2 - x1) * 0.45);
-    const c = LINK_COLOR[ovEl.dataset.change] ? ovEl.dataset.change : 'unchanged';
-    const on = ui.unit === ovEl.dataset.ov || (ui.sel && (ui.sel.id === tid || ui.sel.id === ovEl.dataset.ov));
-    svg.append(mk('path', { class: 'cv-link' + (on ? ' on' : '') + (c === 'removed' ? ' dashed' : ''), d: 'M' + x1 + ',' + y1 + ' C' + (x1 + dx) + ',' + y1 + ' ' + (x2 - dx) + ',' + y2 + ' ' + x2 + ',' + y2, stroke: LINK_COLOR[c], 'marker-end': 'url(#cv-ah-' + c + ')', 'data-from': tid, 'data-to': ovEl.dataset.ov }));
-    svg.append(mk('circle', { cx: x1, cy: y1, r: 4, fill: LINK_COLOR[c] }));
-    n++;
+  S.spec.pages.forEach((p) => {
+    const fr = q(w, '.cv-frame[data-page="' + CSS.escape(p.id) + '"]'); const grp = fr && fr.closest('.cv-group'); if (!grp) return;
+    entries(p).forEach((e) => {
+      const side = (p.change === 'removed' || e.n.change === 'removed') ? 'before' : 'after';
+      const ias = interactionsOf(p, e.n, side); if (!ias.length) return;
+      const sEl = q(grp, '[data-kind="node"][data-id="' + CSS.escape(e.n.id) + '"]:not(.wf-slot)'); if (!sEl) return;
+      ias.forEach((i) => {
+        let tEl = null, color = 'unchanged';
+        if (i.action === 'navigate') { tEl = q(w, '.cv-frame[data-page="' + CSS.escape(String(i.target || '')) + '"]'); const pg = pageById(i.target); color = pg && pg.change !== 'unchanged' ? pg.change : 'nav'; }
+        else if (i.target) {
+          const t = CSS.escape(String(i.target));
+          tEl = q(w, '.cv-ov[data-ov="' + t + '"]') || q(grp, '[data-kind="node"][data-id="' + t + '"]') || q(w, '[data-kind="node"][data-id="' + t + '"]');
+          const f = findNodeAnywhere(i.target); if (f && LINK_COLOR[f.e.n.change]) color = f.e.n.change;
+        }
+        if (!tEl || tEl === sEl || tEl.contains(sEl) || sEl.contains(tEl)) return;
+        const related = !!((sel && (sel.id === e.n.id || sel.id === i.target || (sel.kind === 'page' && sel.id === p.id))) || (unit && (unit === i.target || sEl.dataset.unit === unit || tEl.dataset.unit === unit)));
+        const toPanel = tEl.classList.contains('cv-ov') && grp.contains(tEl);
+        if (!ui.showLinks && !related && !toPanel) return;
+        const A = loc(sEl.getBoundingClientRect()), B = loc(tEl.getBoundingClientRect());
+        let x1, y1, x2, y2, c1x, c1y, c2x, c2y;
+        if (B.l >= A.r + 16 || B.r <= A.l - 16) {
+          const right = B.l >= A.r + 16;
+          x1 = right ? A.r + 2 : A.l - 2; y1 = (A.t + A.b) / 2; x2 = right ? B.l - 3 : B.r + 3; y2 = B.t + Math.min(36, (B.b - B.t) / 2);
+          const d = Math.max(80, Math.abs(x2 - x1) * 0.45) * (right ? 1 : -1); c1x = x1 + d; c1y = y1; c2x = x2 - d; c2y = y2;
+        } else {
+          const down = B.t >= A.b;
+          x1 = (A.l + A.r) / 2; y1 = down ? A.b + 2 : A.t - 2; x2 = Math.min(Math.max(x1, B.l + 24), B.r - 24); y2 = down ? B.t - 3 : B.b + 3;
+          const d = Math.max(40, Math.abs(y2 - y1) * 0.5) * (down ? 1 : -1); c1x = x1 + 60; c1y = y1 + d; c2x = x2 + 60; c2y = y2 - d;
+        }
+        svg.append(mk('path', { class: 'cv-link' + (related ? ' on' : '') + (color === 'removed' ? ' dashed' : ''), d: 'M' + x1 + ',' + y1 + ' C' + c1x + ',' + c1y + ' ' + c2x + ',' + c2y + ' ' + x2 + ',' + y2, stroke: LINK_COLOR[color], 'marker-end': 'url(#cv-ah-' + color + ')', 'data-from': e.n.id, 'data-to': String(i.target || ''), 'data-action': i.action }));
+        svg.append(mk('circle', { cx: x1, cy: y1, r: 4, fill: LINK_COLOR[color] }));
+        const mx = 0.125 * x1 + 0.375 * c1x + 0.375 * c2x + 0.125 * x2, my = 0.125 * y1 + 0.375 * c1y + 0.375 * c2y + 0.125 * y2;
+        const lab = mk('text', { x: mx, y: my, class: 'cv-link-lab', fill: LINK_COLOR[color] }); lab.textContent = IA_SHORT[i.action] || i.action; svg.append(lab);
+        n++;
+      });
     });
   });
   if (n) w.append(svg);
@@ -850,7 +926,7 @@ function canvasArea() {
     h('button', { title: '放大', onclick: () => { const r = vpEl().getBoundingClientRect(); zoomAt(1.25, r.width / 2, r.height / 2); } }, '+'),
     h('button', { title: '整个画布放进视口', onclick: () => fitCam(true) }, '适应'),
     h('span', { class: 'cv-sep' }),
-    t('showFn', 'ƒ 函数', '在线框里显示函数 / 接口占位'), t('showComp', '</> 组件', '显示每个模块对应的代码组件'), t('fade', '淡化未改动', '把没有改动的元素调淡'));
+    t('showLinks', '⇢ 全部连线', '默认只画「按钮 → 单独面板」的连线；打开后连跳页、切换状态的连线也画出来'), t('showFn', 'ƒ 函数', '在线框里显示函数 / 接口占位'), t('showComp', '</> 组件', '显示每个模块对应的代码组件'), t('fade', '淡化未改动', '把没有改动的元素调淡'));
   const vp = h('div', { class: 'cv-vp' + (ui.showFn ? ' show-fn' : '') + (ui.showComp ? ' show-comp' : '') + (ui.fade ? ' fade' : '') + (editing ? ' editing' : ''), id: 'cv-vp' },
     world, tools,
     editing ? palette() : null,
@@ -870,11 +946,15 @@ function pageGroup(p) {
       h('span', { class: 'dot dot-' + pageStatus(p) }), h('span', null, pageName(p)), p.route ? h('span', { class: 'route' }, p.route) : null, cbadge('page', p.id)),
     h('div', { class: 'cv-fb' }, renderWF(p.root, p, o)));
   const ovs = p.overlays.filter((x) => !(ghost && x.change === 'added'));
+  const revs = [];
+  const scan = (n) => { if (n !== p.root && isRevealed(n) && !(ghost && n.change === 'added')) revs.push(n); (n.children || []).forEach(scan); };
+  scan(p.root); p.overlays.forEach(scan);
   const editing = ui.mode === 'edit' && !ghost;
-  const col = (ovs.length || editing) ? h('div', { class: 'cv-ovcol', 'data-page': p.id },
-    ovs.map((x) => overlayFrame(x, p, o)),
-    editing ? h('div', { class: 'cv-ovdrop', 'data-drop': 'overlays' }, '把组件拖到这里，变成点击后才出现的弹层') : null) : null;
-  return h('div', { class: 'cv-group' }, frame, col);
+  const panels = ovs.map((x) => overlayFrame(x, p, o)).concat(revs.map((n) => revealPanel(n, p, o)));
+  const left = h('div', { class: 'cv-ovcol left', 'data-page': p.id });
+  const right = h('div', { class: 'cv-ovcol right', 'data-page': p.id }, panels,
+    editing ? h('div', { class: 'cv-ovdrop', 'data-drop': 'overlays' }, '把组件拖到这里，变成点击后才出现的弹层') : null);
+  return h('div', { class: 'cv-group' }, left, frame, right);
 }
 const OV_W = { drawer: 440, modal: 560, menu: 300, popover: 320 };
 function overlayFrame(x, p, o) {
@@ -882,9 +962,73 @@ function overlayFrame(x, p, o) {
   const v = view(x, ghost ? 'before' : 'after');
   const trs = trigList(v).map((t) => findNode(p, t)).filter(Boolean);
   const vs = ghost ? 'before' : 'after';
-  return h('div', { class: 'cv-ov', 'data-ov': x.id, 'data-trigger': trigList(v).join(' ') || null, 'data-change': ghost ? 'removed' : x.change, style: { width: (OV_W[v.type] || 420) + 'px' } },
+  return h('div', { class: 'cv-ov', 'data-ov': x.id, 'data-anchor': trigList(v).join(' ') || null, 'data-trigger': trigList(v).join(' ') || null, 'data-change': ghost ? 'removed' : x.change, style: { width: (OV_W[v.type] || 420) + 'px' } },
     h('div', { class: 'cv-ovh' }, '▸ ' + tname(v.type) + ' · ', trs.length ? ['点击 ', trs.map((t, i) => [i ? '、' : '', h('button', { class: 'lnk', onclick: (e) => { e.stopPropagation(); focusNode(p.id, t.n.id); } }, nlabel(view(t.n, vs)))]), ' 后出现'] : '未指定由哪个元素打开'),
     renderWF(x, p, o));
+}
+
+/* Click-revealed content (node.hidden + someone toggles/shows it): drawn as its own panel next to the screen,
+ * connected to its trigger, with a slot left in the frame where it will appear. */
+function revealPanel(n, p, o) {
+  const ghost = o.ghost || n.change === 'removed';
+  const vs = ghost ? 'before' : 'after';
+  const chain = parentChain(p, n.id).filter((x) => x !== p.root);
+  const anc = chain.find((x) => x.change !== 'unchanged');
+  const parent = chain[chain.length - 1];
+  const sh = showersOf(n.id);
+  const sub = { side: 'merged', ctx: 'canvas', parentLayout: 'col', asPanel: true, ghost: ghost || o.ghost,
+    whole: o.whole || !!(anc && (anc.change === 'added' || anc.change === 'removed')), unit: o.unit || (anc ? anc.id : null) };
+  return h('div', { class: 'cv-ov cv-rev', 'data-ov': n.id, 'data-anchor': sh.map((x) => x.id).join(' '), 'data-slot': n.id, 'data-change': ghost ? 'removed' : (anc ? anc.change : n.change), style: { width: (Number(n.pw) || (n.type === 'list' || n.type === 'menu' ? 360 : 480)) + 'px' } },
+    h('div', { class: 'cv-ovh' }, '▸ 点击 ', sh.map((t, i) => [i ? '、' : '', h('button', { class: 'lnk', onclick: (e) => { e.stopPropagation(); focusNode(p.id, t.id); } }, nlabel(view(t, vs)))]),
+      ' 后展开', parent ? ' · 在 ' + nlabel(view(parent, vs)) + ' 里' : '',
+      h('button', { class: 'lnk', onclick: (e) => { e.stopPropagation(); const sl = document.querySelector('#cv-world .wf-slot[data-id="' + CSS.escape(n.id) + '"]'); if (sl) focusEl(sl); } }, '看位置')),
+    renderWF(n, p, sub));
+}
+/* Put each side panel next to the element that opens it: triggers in the left half of the screen
+ * get their panel in the left column, others in the right column, at the trigger's height. */
+function layoutPanels() {
+  const w = worldEl(); if (!w) return;
+  const wr = w.getBoundingClientRect(); const k = wr.width / (w.offsetWidth || 1) || 1;
+  w.querySelectorAll('.cv-group').forEach((g) => {
+    const frame = g.querySelector('.cv-frame'), L = g.querySelector('.cv-ovcol.left'), R = g.querySelector('.cv-ovcol.right'); if (!frame || !L || !R) return;
+    const drop = R.querySelector('.cv-ovdrop');
+    const panels = [...g.querySelectorAll('.cv-ov')];
+    const byId = new Map(panels.map((x) => [x.dataset.ov, x]));
+    const info = new Map();
+    const gr = g.getBoundingClientRect(), fr = frame.getBoundingClientRect();
+    void fr;
+    panels.forEach((pn) => {
+      const ids = (pn.dataset.anchor || '').split(' ').filter(Boolean);
+      let a = null, host = null;
+      for (const id of ids) {
+        a = frame.querySelector('[data-kind="node"][data-id="' + CSS.escape(id) + '"]'); if (a) break;
+        const inPanel = panels.find((x) => x !== pn && x.querySelector('[data-kind="node"][data-id="' + CSS.escape(id) + '"]'));
+        if (inPanel) { host = inPanel; break; }
+      }
+      const r = a && a.getBoundingClientRect();
+      info.set(pn, { y: r ? (r.top - gr.top) / k : 1e9, side: a && a.closest('.t-sidebar') && a.closest('.t-sidebar').getBoundingClientRect().right < (fr.left + fr.right) / 2 ? 'L' : 'R', host: host, kids: [] });
+    });
+    panels.forEach((pn) => { const x = info.get(pn); if (x.host) info.get(x.host).kids.push(pn); });
+    const sideOf = (pn) => { const x = info.get(pn); return x.host ? sideOf(x.host) : x.side; };
+    ['L', 'R'].forEach((side) => {
+      const col = side === 'L' ? L : R;
+      const roots = panels.filter((pn) => !info.get(pn).host && sideOf(pn) === side).sort((a, b) => info.get(a).y - info.get(b).y);
+      const order = []; const add = (pn) => { order.push([pn, true]); info.get(pn).kids.forEach((c) => order.push([c, false]) || addKids(c)); };
+      const addKids = (pn) => info.get(pn).kids.forEach((c) => { order.push([c, false]); addKids(c); });
+      roots.forEach((pn) => { order.push([pn, true]); addKids(pn); });
+      let cur = 0, first = true;
+      order.forEach(([pn, isRoot]) => {
+        col.append(pn);
+        const want = isRoot && info.get(pn).y < 1e9 ? info.get(pn).y - 30 : cur + (first ? 0 : 28);
+        const m = Math.max(first ? 0 : 28, want - cur);
+        pn.style.marginTop = m + 'px';
+        cur += m + pn.offsetHeight; first = false;
+      });
+    });
+    if (drop) { R.append(drop); drop.style.marginTop = '28px'; }
+    L.classList.toggle('empty', !L.children.length);
+    void byId;
+  });
 }
 
 // ------------------------------------------------------------------ canvas: detail panel
@@ -1056,6 +1200,126 @@ function endPointerDrag(e, commit) {
 document.addEventListener('pointerup', (e) => endPointerDrag(e, true));
 document.addEventListener('pointercancel', (e) => endPointerDrag(e, false));
 
+// ------------------------------------------------------------------ play (prototype) mode
+/* Figma-style "Present": one screen at a time, clicking hotspots runs their interactions
+ * (open overlay / navigate / toggle / switch state / close / back). Clicking elsewhere flashes the hotspots. */
+function startPlay(pid) {
+  const p = pageById(pid) || pageById(ui.page) || S.spec.pages.find((x) => x.change !== 'removed') || S.spec.pages[0];
+  if (!p) { toast('没有可以演示的页面', true); return; }
+  ui.play = { start: p.id, page: p.id, side: p.change === 'removed' ? 'before' : 'after', marks: false, ovs: [], stack: [], vis: {}, st: {}, anchor: {}, log: [], k: 1, top: true };
+  ui.sel = null; render();
+}
+function stopPlay() { ui.play = null; ui.cam = null; render(); }
+function ovHolding(id) { const P = ui.play; for (let i = P.ovs.length - 1; i >= 0; i--) { const f = findNodeAnywhere(P.ovs[i]); const t = findNodeAnywhere(id); if (f && t && contains(f.e.n, t.e.n)) return P.ovs[i]; } return null; }
+function isOverlayId(id) { return S.spec.pages.some((p) => p.overlays.some((x) => x.id === id)); }
+function applyIA(i, p, n) {
+  const P = ui.play;
+  const openOv = (id) => { if (P.ovs.indexOf(id) < 0) { P.ovs.push(id); P.anchor[id] = n.id; } };
+  switch (i.action) {
+    case 'open': if (i.target && isOverlayId(i.target)) openOv(i.target); else if (i.target) P.vis[i.target] = true; break;
+    case 'close': { const host = i.target || ovHolding(n.id) || P.ovs[P.ovs.length - 1]; P.ovs = P.ovs.filter((x) => x !== host); break; }
+    case 'navigate': if (pageById(i.target) && i.target !== P.page) { P.stack.push({ page: P.page, ovs: P.ovs.slice() }); P.page = i.target; P.ovs = []; P.top = true; } break;
+    case 'toggle': if (isOverlayId(i.target)) { if (P.ovs.indexOf(i.target) >= 0) P.ovs = P.ovs.filter((x) => x !== i.target); else openOv(i.target); } else { const f = findNodeAnywhere(i.target); if (f) P.vis[i.target] = !playVisible(f.e.n); } break;
+    case 'show': if (isOverlayId(i.target)) openOv(i.target); else P.vis[i.target] = true; break;
+    case 'hide': if (isOverlayId(i.target)) P.ovs = P.ovs.filter((x) => x !== i.target); else P.vis[i.target] = false; break;
+    case 'state': { const f = findNodeAnywhere(i.target || n.id); if (!f) break; const t = f.e.n; if (i.state !== undefined && i.state !== null) P.st[t.id] = i.state; else { const list = t.state ? stateNames(t) : [null].concat(stateNames(t)); P.st[t.id] = list[(list.indexOf(curState(t, 'play')) + 1) % list.length]; } break; }
+    case 'back': playBack(true); break;
+  }
+}
+function runIA(pid, id) {
+  const P = ui.play; if (!P) return false;
+  const p = pageById(pid); const f = p && findNode(p, id); if (!f) return false;
+  const list = interactionsOf(p, f.n, P.side); if (!list.length) return false;
+  const who = nlabel(withState(f.n, f.n, 'play'));
+  list.forEach((i) => applyIA(i, p, f.n));
+  P.log.push(who + ' → ' + list.map((i) => (IA_VERB[i.action] || i.action) + ' ' + iaTargetName(i.action === 'state' && !i.target ? Object.assign({}, i, { target: f.n.id }) : i)).join('，'));
+  render(); return true;
+}
+function playBack(noRender) {
+  const P = ui.play;
+  if (P.ovs.length) P.ovs.pop();
+  else if (P.stack.length) { const x = P.stack.pop(); P.page = x.page; P.ovs = x.ovs; P.top = true; }
+  if (!noRender) render();
+}
+function playGo(pid) { const P = ui.play; if (pid === P.page) return; P.stack.push({ page: P.page, ovs: P.ovs.slice() }); P.page = pid; P.ovs = []; P.top = true; render(); }
+function playContext() {
+  const P = ui.play; const p = pageById(P.page);
+  const parts = ['页面「' + pageName(p) + '」'];
+  if (P.ovs.length) parts.push('已打开 ' + P.ovs.map((id) => iaTargetName({ action: 'open', target: id })).join('、'));
+  Object.keys(P.vis).forEach((id) => { const f = findNodeAnywhere(id); if (f && P.vis[id] !== !f.e.n.hidden) parts.push((P.vis[id] ? '展开了 ' : '收起了 ') + nlabel(f.e.n)); });
+  Object.keys(P.st).forEach((id) => { const f = findNodeAnywhere(id); if (f && P.st[id] !== (f.e.n.state || null)) parts.push(nlabel(f.e.n) + ' 为「' + (P.st[id] || '默认') + '」'); });
+  if (P.side === 'before') parts.push('改动前');
+  return parts.join('，');
+}
+function flashHints() {
+  const fr = document.getElementById('pl-frame'); if (!fr) return;
+  fr.classList.remove('pl-hint'); void fr.offsetWidth; fr.classList.add('pl-hint');
+  clearTimeout(ui.hintTimer); ui.hintTimer = setTimeout(() => fr.classList.remove('pl-hint'), 900);
+}
+function onPlayClick(e) {
+  const bk = e.target.closest('[data-close]');
+  if (bk && e.target === bk) { ui.play.ovs = ui.play.ovs.filter((x) => x !== bk.dataset.close); render(); return; }
+  const ia = e.target.closest('#pl-frame [data-ia]');
+  if (ia && runIA(ia.dataset.pg, ia.dataset.id)) return;
+  if (e.target.closest('#pl-frame')) flashHints();
+}
+function playOverlay(id, side) {
+  const f = findNodeAnywhere(id); if (!f) return null;
+  const n = f.e.n; if (!visible(n, side)) return null;
+  const v = view(n, side);
+  const box = h('div', { class: 'pl-ov pl-ov-' + v.type, style: { width: (OV_W[v.type] || 420) + 'px' } }, renderWF(n, f.p, { side: side, ctx: 'play', parentLayout: 'col' }));
+  return h('div', { class: 'pl-back pl-back-' + v.type + (v.type === 'modal' || v.type === 'drawer' ? ' dim' : ''), 'data-close': id }, box);
+}
+function renderPlay() {
+  const P = ui.play; const p = pageById(P.page) || S.spec.pages[0];
+  const side = P.side;
+  const gone = (side === 'after' && p.change === 'removed') || (side === 'before' && p.change === 'added');
+  const body = gone ? h('div', { class: 'pl-void' }, side === 'after' ? '这个页面在改动后被删除了' : '改动前没有这个页面') : renderWF(p.root, p, { side: side, ctx: 'play', parentLayout: 'col' });
+  const frame = h('div', { class: 'pl-frame' + (P.marks ? ' marks' : ''), id: 'pl-frame', style: { width: (Number(p.width) || 1280) + 'px' } },
+    h('div', { class: 'pl-fh' }, h('span', { class: 'dot dot-' + pageStatus(p) }), pageName(p), p.route ? h('span', { class: 'route' }, p.route) : null),
+    h('div', { class: 'pl-fb' }, body),
+    P.ovs.map((id) => playOverlay(id, side)).filter(Boolean));
+  const bar = h('div', { class: 'pl-bar' },
+    btn('← 返回', () => playBack(), null, '关闭最上层弹层，或回到上一屏'), btn('⟲ 从头开始', () => startPlay(P.start)),
+    h('b', null, pageName(p)), P.ovs.length ? h('span', { class: 'hint' }, '已打开 ' + P.ovs.length + ' 个弹层（点暗处关闭）') : null,
+    h('span', { style: 'margin-left:auto' }), h('span', { class: 'hint' }, '能点的地方鼠标会变成手形；点空白处会闪出所有可点区域'));
+  return h('div', { class: 'body pl' }, playSide(p), h('div', { class: 'pl-main' }, bar, h('div', { class: 'pl-stage', id: 'pl-stage', onclick: onPlayClick }, h('div', { class: 'pl-wrap', id: 'pl-wrap' }, frame))));
+}
+function playSide(p) {
+  const P = ui.play; const side = P.side;
+  const items = [];
+  const scan = (n, pg) => { const walk = (x) => { if (!visible(x, side)) return; const ia = interactionsOf(pg, x, side); if (ia.length) items.push([pg, x, ia]); (x.children || []).forEach(walk); }; walk(n); };
+  scan(p.root, p);
+  P.ovs.forEach((id) => { const f = findNodeAnywhere(id); if (f) scan(f.e.n, f.p); });
+  const conds = entries(p).filter((e) => e.n.hidden && visible(e.n, side) && !showersOf(e.n.id).length);
+  const ta = h('textarea', { 'data-f': 'pl-c', placeholder: '对现在看到的画面写意见。会自动记下你当时在哪一屏、打开了什么。' });
+  const sev = h('select', { 'data-f': 'pl-sev' }, SEVS.map((x) => h('option', { value: x }, x))); sev.value = '建议';
+  const addC = () => { const t = ta.value.trim(); if (!t) { ta.focus(); return; } addComment({ kind: 'page', id: p.id }, '交互方式', sev.value, '［演示中：' + playContext() + '］' + t); toast('已记下，会出现在「反馈」里'); };
+  return h('aside', { class: 'pl-side', id: 'pl-side' },
+    h('div', { class: 'sec-t' }, '屏幕'),
+    S.spec.pages.map((q) => h('button', { class: 'cv-item' + (q.id === p.id ? ' on' : ''), onclick: () => playGo(q.id) }, h('span', { class: 'dot dot-' + pageStatus(q) }), ' ', pageName(q))),
+    UNITS.length ? [h('div', { class: 'sec-t' }, '看哪个版本'),
+      h('div', { class: 'seg' }, h('button', { class: side === 'before' ? 'on' : null, onclick: () => { P.side = 'before'; P.ovs = []; render(); } }, '改动前'), h('button', { class: side === 'after' ? 'on' : null, onclick: () => { P.side = 'after'; P.ovs = []; render(); } }, '改动后')),
+      h('label', { class: 'trig-opt' }, h('input', { type: 'checkbox', checked: P.marks, style: 'width:auto', onchange: (e) => { P.marks = e.target.checked; render(); } }), ' 显示改动框')] : null,
+    h('div', { class: 'sec-t' }, '现在能点的（' + items.length + '）'),
+    items.length ? h('ul', { class: 'dt-list pl-ia' }, items.map((x) => h('li', null, h('button', { class: 'lnk', onclick: () => runIA(x[0].id, x[1].id) }, nlabel(withState(x[1], x[1], 'play'))), h('div', { class: 'hint' }, x[2].map((i) => (IA_VERB[i.action] || i.action) + ' ' + iaTargetName(i)).join('；'))))) : h('div', { class: 'hint' }, '这一屏没有写交互'),
+    conds.length ? [h('div', { class: 'sec-t' }, '按条件出现的区块（手动打开看看）'), conds.map((e) => h('label', { class: 'trig-opt' }, h('input', { type: 'checkbox', checked: playVisible(e.n), style: 'width:auto', onchange: (ev) => { P.vis[e.n.id] = ev.target.checked; render(); } }), ' ' + nlabel(e.n)))] : null,
+    P.log.length ? [h('div', { class: 'sec-t' }, '刚才点了'), h('ol', { class: 'dt-list' }, P.log.slice(-6).map((x) => h('li', null, x)))] : null,
+    h('div', { class: 'cbox' }, h('div', { class: 'sec-t' }, '对这个画面写批注'), sev, ta, h('div', { class: 'acts' }, h('button', { class: 'primary', onclick: addC }, '添加批注'))));
+}
+function fitPlay() {
+  const st = document.getElementById('pl-stage'), wrap = document.getElementById('pl-wrap'), fr = document.getElementById('pl-frame'); if (!st || !fr || !ui.play) return;
+  const W = fr.offsetWidth, k = Math.min(1, Math.max(0.3, (st.clientWidth - 48) / W));
+  fr.style.transform = 'scale(' + k + ')'; wrap.style.width = W * k + 'px'; wrap.style.height = fr.offsetHeight * k + 'px'; ui.play.k = k;
+  fr.querySelectorAll('.pl-back-menu, .pl-back-popover').forEach((bk) => {
+    const box = bk.firstElementChild; const aid = ui.play.anchor[bk.dataset.close];
+    const a = aid && (fr.querySelector('.pl-fb [data-id="' + CSS.escape(aid) + '"]') || fr.querySelector('.pl-ov [data-id="' + CSS.escape(aid) + '"]'));
+    if (!a) { box.style.left = '40px'; box.style.top = '60px'; return; }
+    const f0 = fr.getBoundingClientRect(), r = a.getBoundingClientRect();
+    box.style.left = Math.max(8, Math.min((r.left - f0.left) / k, W - box.offsetWidth - 8)) + 'px'; box.style.top = ((r.bottom - f0.top) / k + 4) + 'px';
+  });
+}
+
 // ------------------------------------------------------------------ flows
 function renderFlows() {
   const flows = S.spec.flows;
@@ -1197,8 +1461,12 @@ function inspNode(s, compact) {
     if (ui.mode === 'edit' && s.side === 'before' && n.change === 'removed') out.push(h('div', { class: 'acts' }, btn(n.movedTo ? '撤销移动（放回原处）' : '恢复这个元素', () => mutate(() => opRestore(p.id, n.id)))));
     if (ui.mode === 'view' && s.side === 'after') out.push(h('div', { class: 'ins-tip' }, '想直接改？点顶部「编辑方案」，就可以拖动、改类型、转为弹窗或删除。'));
   }
-  const opens = p.overlays.filter((x) => visible(x, s.side) && trigList(view(x, s.side)).includes(n.id));
-  opens.forEach((x) => out.push(h('div', { class: 'acts' }, btn('点击后打开：▸ ' + tname(x.type) + '「' + short(x.label || '', 16) + '」 →', () => focusNode(p.id, x.id)))));
+  const ias = interactionsOf(p, n, s.side);
+  if (ias.length) out.push(h('div', { class: 'dt-block' }, h('div', { class: 'sec-t' }, '交互'),
+    h('ul', { class: 'dt-list' }, ias.map((i) => { const f = i.target && i.action !== 'navigate' ? findNodeAnywhere(i.target) : null; return h('li', null, iaText(i), ' ', f ? btn('定位', () => focusNode(f.p.id, f.e.n.id), 'lnk') : null); })),
+    h('div', { class: 'acts' }, btn('▶ 在演示里点一下', () => { startPlay(p.id); runIA(p.id, n.id); }))));
+  if (n.hidden) { const sh = showersOf(n.id); out.push(h('div', { class: 'ins-note' }, '默认不显示。', sh.length ? ['由 ', sh.map((x, i) => [i ? '、' : '', h('button', { class: 'lnk', onclick: () => { const f = findNodeAnywhere(x.id); if (f) focusNode(f.p.id, x.id); } }, nlabel(x))]), ' 点击后出现。'] : '按条件出现（演示模式左侧可以手动打开）。')); }
+  if (stateNames(n).length) out.push(h('div', { class: 'ins-note' }, '有 ' + (stateNames(n).length + (n.state ? 0 : 1)) + ' 个状态：' + (n.state ? '' : '默认、') + stateNames(n).map((x) => '「' + x + '」').join('、') + '。在演示模式里点触发它的元素即可切换。'));
   out.push(commentBox({ kind: 'node', page: p.id, id: n.id, side: s.side }));
   return out;
 }
@@ -1426,8 +1694,9 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z') && !typing) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
   else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y') && !typing) { e.preventDefault(); redo(); }
   else if (!typing && (e.key === 'Delete' || e.key === 'Backspace') && ui.mode === 'edit' && ui.sel && ui.sel.kind === 'node' && ui.sel.side === 'after') { e.preventDefault(); const s = ui.sel; mutate(() => opDelete(s.page, s.id)); }
+  else if (e.key === 'Escape' && ui.play) { if (ui.play.ovs.length) { ui.play.ovs.pop(); render(); } }
   else if (e.key === 'Escape') { ui.sel = null; ui.unit = null; render(); }
-  else if (e.key === ' ' && !typing && ui.tab === 'canvas' && !ui.space) { ui.space = true; const v = vpEl(); if (v) v.classList.add('space'); e.preventDefault(); }
+  else if (e.key === ' ' && !typing && ui.tab === 'canvas' && !ui.space && !ui.play) { ui.space = true; const v = vpEl(); if (v) v.classList.add('space'); e.preventDefault(); }
 });
 validateSel();
 render();
@@ -1439,6 +1708,7 @@ window.addEventListener('resize', () => { if (ui.tab === 'canvas' && ui.cam) app
 window.smyw = {
   get state() { return S; }, ui: ui, render: render, undo: undo, redo: redo, setMode: setMode, setTab: setTab,
   setPage: (id) => { ui.page = id; ui.sel = null; render(); },
+  play: { start: startPlay, stop: stopPlay, click: (pid, id) => runIA(pid, id), back: () => playBack(), get state() { return ui.play; } },
   get units() { computeUnits(); return UNITS.map((u) => Object.assign({}, u)); },
   focusUnit: focusUnit, focusNode: focusNode, fit: () => fitCam(false), zoomAt: zoomAt,
   op: {

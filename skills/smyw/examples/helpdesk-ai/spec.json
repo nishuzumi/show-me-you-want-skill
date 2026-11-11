@@ -142,7 +142,7 @@
                   {
                     "id": "t-assign",
                     "type": "button",
-                    "label": "转交",
+                    "label": "转交 ▾",
                     "variant": "ghost"
                   },
                   {
@@ -205,7 +205,14 @@
                         "type": "button",
                         "label": "用这条回复",
                         "variant": "primary",
-                        "fn": "fillReply(draft)"
+                        "fn": "fillReply(draft)",
+                        "on": [
+                          {
+                            "action": "state",
+                            "target": "reply-text",
+                            "state": "filled"
+                          }
+                        ]
                       },
                       {
                         "id": "ai-edit",
@@ -238,7 +245,12 @@
                   {
                     "id": "reply-text",
                     "type": "textarea",
-                    "text": "输入回复…"
+                    "text": "输入回复…",
+                    "states": {
+                      "filled": {
+                        "text": "您好，查到您的退款已于 11 月 6 日原路退回，银行通常 1–3 个工作日到账……"
+                      }
+                    }
                   },
                   {
                     "id": "reply-bar",
@@ -311,12 +323,26 @@
                 "note": "AI 按内容找出的历史工单，点开看当时怎么处理的",
                 "children": [
                   {
-                    "id": "c-sim-list",
-                    "type": "list",
-                    "items": [
-                      "#987 退款延迟 · 已解决",
-                      "#902 退款未到账 · 已解决"
+                    "id": "c-sim-1",
+                    "type": "item",
+                    "label": "#987 退款延迟 · 已解决",
+                    "on": [
+                      {
+                        "action": "toggle",
+                        "target": "c-sim-1-detail"
+                      }
                     ]
+                  },
+                  {
+                    "id": "c-sim-1-detail",
+                    "type": "text",
+                    "hidden": true,
+                    "label": "当时的处理：联系银行加急，第二天到账"
+                  },
+                  {
+                    "id": "c-sim-2",
+                    "type": "item",
+                    "label": "#902 退款未到账 · 已解决"
                   }
                 ]
               }
@@ -362,13 +388,28 @@
                   "type": "button",
                   "label": "替换到回复框",
                   "variant": "primary",
-                  "fn": "applyDraft()"
+                  "fn": "applyDraft()",
+                  "on": [
+                    {
+                      "action": "state",
+                      "target": "reply-text",
+                      "state": "filled"
+                    },
+                    {
+                      "action": "close"
+                    }
+                  ]
                 },
                 {
                   "id": "d-cancel",
                   "type": "button",
                   "label": "取消",
-                  "variant": "ghost"
+                  "variant": "ghost",
+                  "on": [
+                    {
+                      "action": "close"
+                    }
+                  ]
                 }
               ]
             }
@@ -396,6 +437,55 @@
               "id": "qm-add",
               "type": "button",
               "label": "新增模板"
+            }
+          ]
+        },
+        {
+          "id": "assign-menu",
+          "type": "menu",
+          "label": "转交给",
+          "trigger": "t-assign",
+          "component": "<AssignMenu>",
+          "children": [
+            {
+              "id": "as-1",
+              "type": "item",
+              "label": "张三（在线）",
+              "on": [
+                {
+                  "action": "close"
+                }
+              ]
+            },
+            {
+              "id": "as-2",
+              "type": "item",
+              "label": "李四（忙碌）",
+              "on": [
+                {
+                  "action": "close"
+                }
+              ]
+            },
+            {
+              "id": "as-3",
+              "type": "item",
+              "label": "财务组 ▸",
+              "on": [
+                {
+                  "action": "toggle",
+                  "target": "as-3-sub"
+                }
+              ]
+            },
+            {
+              "id": "as-3-sub",
+              "type": "list",
+              "hidden": true,
+              "items": [
+                "王五 · 退款专员",
+                "赵六 · 对账"
+              ]
             }
           ]
         }

@@ -50,9 +50,11 @@ await shot('03-whole-module-added');
 await ev('smyw.focusUnit("t-resolve"); return 1'); await sleep(500);
 await ev('__fit(["#cv-world [data-id=t-header]", "#cv-world [data-id=reply]"], 30); return 1');
 await shot('04-moved');
-await ev('smyw.ui.sel = null; smyw.ui.unit = null; smyw.render(); __fit(["#cv-world [data-id=ai-suggest]", "#cv-world [data-id=reply]", ".cv-ov[data-ov=ai-drawer]", ".cv-ov[data-ov=quick-modal]"], 30); return 1');
+await ev('smyw.ui.sel = null; smyw.ui.unit = null; smyw.ui.showLinks = true; smyw.render(); __fit(["#cv-world [data-id=t-header]", "#cv-world [data-id=reply]", ".cv-ov[data-ov=ai-drawer]", ".cv-ov[data-ov=quick-modal]", ".cv-ov[data-ov=assign-menu]"], 30); return 1');
 await shot('05-trigger-links');
-await ev('smyw.ui.showFn = true; smyw.ui.showComp = true; smyw.ui.fade = true; smyw.render(); __fit(["#cv-world [data-id=detail]"], 30); return 1');
+await ev('__fit(["#cv-world [data-id=customer]", ".cv-ov[data-ov=c-sim-1-detail]", ".cv-ov[data-ov=assign-menu]", ".cv-ov[data-ov=as-3-sub]"], 30); return 1');
+await shot('05b-side-panels');
+await ev('smyw.ui.showLinks = false; smyw.ui.showFn = true; smyw.ui.showComp = true; smyw.ui.fade = true; smyw.render(); __fit(["#cv-world [data-id=detail]"], 30); return 1');
 await shot('06-toolbar-toggles');
 await ev('smyw.ui.showFn = false; smyw.ui.showComp = false; smyw.ui.fade = false; smyw.setTab("flows"); return 1');
 await shot('07-flows');
@@ -60,6 +62,23 @@ await ev('[...document.querySelectorAll(".page-link")].find(b => b.textContent.i
 await shot('08-flow-jump-to-canvas');
 await ev('smyw.setTab("backend"); return 1');
 await shot('09-backend');
+
+console.log('play mode');
+await ev('smyw.ui.showLinks = false; smyw.ui.showFn = false; smyw.ui.showComp = false; smyw.ui.fade = false; smyw.ui.sel = null; smyw.ui.unit = null; smyw.setTab("canvas"); smyw.play.start("inbox"); return 1'); await sleep(400);
+await shot('21-play');
+await ev('document.querySelector("#pl-frame [data-id=t-title]").click(); return 1'); await sleep(120);
+await shot('22-play-hotspots');
+await sleep(900);
+await ev('document.querySelector("#pl-frame [data-ia][data-id=t-assign]").click(); return 1'); await sleep(200);
+await ev('document.querySelector(".pl-ov [data-ia][data-id=as-3]").click(); return 1'); await sleep(200);
+await shot('23-play-menu');
+await ev('document.querySelector(".pl-back").click(); return 1'); await sleep(150);
+await ev('document.querySelector("#pl-frame [data-ia][data-id=ai-edit]").click(); return 1'); await sleep(200);
+await shot('24-play-drawer');
+await ev('document.querySelector(".pl-ov [data-ia][data-id=d-apply]").click(); return 1'); await sleep(200);
+await ev('document.querySelector("#pl-frame [data-id=reply-text]").scrollIntoView({ block: "center" }); return 1');
+await shot('25-play-after-apply');
+await ev('smyw.play.stop(); return 1'); await sleep(300); await ev(HELPERS);
 
 console.log('edit mode');
 await ev('smyw.ui.sel = null; smyw.ui.unit = null; smyw.setTab("canvas"); smyw.setMode("edit"); return 1'); await sleep(300);
@@ -74,7 +93,7 @@ await shot('12-after-drag');
 await ev('smyw.undo(); smyw.focusUnit("ai-suggest"); return 1'); await sleep(500);
 await ev('const b = [...document.querySelectorAll("#inspector button")].find(x => x.textContent === "转为弹窗"); b.scrollIntoView({ block: "center" }); return 1');
 await shot('13-convert-options');
-await ev('smyw.op.convert("inbox", "ai-suggest", "modal"); smyw.ui.sel = null; smyw.ui.unit = null; smyw.render(); __fit([".cv-frame", ".cv-ovcol"], 30); return 1');
+await ev('smyw.op.convert("inbox", "ai-suggest", "modal"); smyw.ui.sel = null; smyw.ui.unit = null; smyw.render(); __fit([".cv-group"], 30); return 1');
 await shot('14-converted-to-modal');
 
 console.log('comments & feedback');

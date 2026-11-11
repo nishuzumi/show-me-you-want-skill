@@ -7,6 +7,8 @@ smyw 是一个给编码 Agent（Claude Code、DeepSeek Harness 等支持 `SKILL.
 - 按真实界面画出一整屏的线框，模块名和代码组件对得上；
 - 改动处按编号画框：**黄 = 修改，绿 = 新增，红 = 删除**；
 - 点开一处改动，看改动前后、改了哪些字段、相关交互和函数 / 接口；
+- 弹窗、下拉菜单、点了才展开的内容画成旁边的单独面板，用连线连到触发它的按钮；
+- 点「▶ 演示」像 Figma 原型一样一屏一屏点着试：弹窗弹出来、菜单展开、按钮变状态、跳到另一屏；
 - 你可以直接在图上拖动组件、把卡片改成弹窗、写批注、写整体风格意见，然后一键复制反馈发回给 Agent。
 
 线框只表达「有哪些模块、放在哪、怎么触发」，**不是视觉稿**，实现时以项目自己的设计规范为准。
@@ -95,13 +97,45 @@ node skills/smyw/scripts/build.mjs skills/smyw/examples/helpdesk-ai/spec.json
 
 ![移动](docs/screenshots/04-moved.png)
 
-### 5. 按钮 → 弹层的连线
+### 5. 二级菜单、弹层、点了才出现的内容：单独面板 + 连线
 
-弹窗、抽屉、下拉菜单、气泡画在页面右侧，从触发它的按钮画一条弯曲连线过去。一个弹层可以有多个触发按钮（这里「展开编辑」和「AI 润色」打开同一个抽屉），被删除的弹层用红色虚线。
+弹窗、抽屉、下拉菜单（二级菜单）、气泡，以及「点一下才展开」的内容，都画成屏幕旁边的**单独面板**，从触发它的按钮画一条弯曲连线过去，线上写着「打开 / 展开收起」。面板放在离触发按钮近的一侧、和按钮差不多高的位置。
 
-![触发连线](docs/screenshots/05-trigger-links.png)
+一个弹层可以有多个触发按钮（这里「展开编辑」和「AI 润色」打开同一个抽屉），被删除的弹层用红色虚线。
 
-### 6. 函数、组件、淡化未改动
+![弹层和连线](docs/screenshots/05-trigger-links.png)
+
+菜单里还有下一级的，也照样拆成面板接着连下去；点了才展开的内容在原位置留一个紫色虚线槽位「…在这里展开 →」，告诉你它会出现在哪里：
+
+![二级菜单和展开内容](docs/screenshots/05b-side-panels.png)
+
+跳页、切换状态这类连线默认不画，选中相关元素时才出现；工具栏「⇢ 全部连线」可以全部打开。
+
+### 6. ▶ 演示：像 Figma 原型一样点着试
+
+点右上角「▶ 演示」，一次显示一屏，去掉改动框，变成一个能点的低保真原型：
+
+![演示模式](docs/screenshots/21-play.png)
+
+- 点到不能点的地方，所有能点的区域会闪一下蓝框（左侧也列出了「现在能点的」）：
+
+![可点区域提示](docs/screenshots/22-play-hotspots.png)
+
+- 下拉菜单贴着按钮出现，菜单里的下一级在原地展开；点外面关闭：
+
+![演示下拉菜单](docs/screenshots/23-play-menu.png)
+
+- 抽屉从右边滑出、弹窗居中变暗；按钮可以改变别的元素的状态，比如「替换到回复框」把草稿填进回复框并关掉抽屉：
+
+![演示抽屉](docs/screenshots/24-play-drawer.png)
+![点击后的状态](docs/screenshots/25-play-after-apply.png)
+
+- 「← 返回」「⟲ 从头开始」；有改动时可以在「改动前 / 改动后」之间切换，分别点一遍对比体验；
+- 演示中写的批注会自动记下当时在哪一屏、打开了什么、点过什么。
+
+这些交互由 spec 里的 `on` / `hidden` / `states` 描述，见 [`spec-format.md`](skills/smyw/references/spec-format.md)。
+
+### 7. 函数、组件、淡化未改动
 
 工具栏可以打开：
 
@@ -111,7 +145,7 @@ node skills/smyw/scripts/build.mjs skills/smyw/examples/helpdesk-ai/spec.json
 
 ![工具栏开关](docs/screenshots/06-toolbar-toggles.png)
 
-### 7. 流程变化
+### 8. 流程变化
 
 「流程变化」把交互流程画成泳道（用户 / 前端 / 后端 / 数据库 / 外部服务），左右对比改动前后，同样用黄绿红标注。
 
@@ -121,13 +155,13 @@ node skills/smyw/scripts/build.mjs skills/smyw/examples/helpdesk-ai/spec.json
 
 ![从流程跳回界面](docs/screenshots/08-flow-jump-to-canvas.png)
 
-### 8. 后端变化
+### 9. 后端变化
 
 模块 → 接口 / 函数 / 字段 / 配置，左右对比。
 
 ![后端变化](docs/screenshots/09-backend.png)
 
-### 9. 直接改方案
+### 10. 直接改方案
 
 顶部切到「编辑方案」，底部出现组件库。拖页面底板或空白处是平移，拖组件是挪位置。
 
@@ -151,13 +185,13 @@ node skills/smyw/scripts/build.mjs skills/smyw/examples/helpdesk-ai/spec.json
 
 所有修改都可以撤销 / 重做（Ctrl / ⌘ + Z）。
 
-### 10. 批注
+### 11. 批注
 
 点任意元素，在右侧写批注，选分类（位置/布局、交互方式、组件类型、样式/风格、文案、功能缺失……）和级别（必须改 / 建议 / 疑问）。有批注的元素右上角会显示数量。
 
 ![批注](docs/screenshots/15-comment.png)
 
-### 11. 整体意见、回答问题、复制反馈
+### 12. 整体意见、回答问题、复制反馈
 
 「反馈」页汇总所有内容：
 
@@ -172,13 +206,13 @@ node skills/smyw/scripts/build.mjs skills/smyw/examples/helpdesk-ai/spec.json
 
 ![复制反馈](docs/screenshots/17-copy-feedback.png)
 
-### 12. 多个页面
+### 13. 多个页面
 
 一次改动涉及多个页面时，每个页面一块画板。整页新增是绿框，整页删除是红框。
 
 ![多页面](docs/screenshots/18-multi-page.png)
 
-### 13. 窄窗口
+### 14. 窄窗口
 
 在窄窗口里（比如 Agent 界面的侧边预览）画布占满宽度，改动清单收进「☰ 改动」按钮，详情浮在画布上。
 
@@ -201,7 +235,7 @@ node skills/smyw/scripts/build.mjs .smyw/<dir>/spec.json
 
 ## spec 长什么样
 
-一棵树同时描述改动前后，每个节点用 `change` 标注：
+一棵树同时描述改动前后，每个节点用 `change` 标注；交互用 `on` / `hidden` / `states`：
 
 ```json
 {
@@ -210,7 +244,8 @@ node skills/smyw/scripts/build.mjs .smyw/<dir>/spec.json
   "children": [
     { "id": "reply-quick", "type": "select", "text": "快捷回复", "change": "removed" },
     { "id": "reply-polish", "type": "button", "label": "AI 润色", "change": "added",
-      "fn": "openDraftDrawer({ mode: \"polish\" })" }
+      "fn": "openDraftDrawer({ mode: \"polish\" })",
+      "on": [{ "action": "open", "target": "ai-drawer" }] }
   ]
 }
 ```

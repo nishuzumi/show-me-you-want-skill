@@ -82,6 +82,39 @@ spec 是一个 JSON 对象。只有 `title` 加上 `pages` / `flows` / `backend`
 - 展示：`heading` `text` `image` `table` `chart` `stat` `badge` `tag` `icon` `divider`
 - `placeholder`：带斜纹的虚线框。只用于「这里将来会有内容」之类的占位；**没改动的模块不要用它**，画成真实模块、不展开 children 即可（显示「内容不变，未展开」）
 
+## 交互（on / hidden / states）
+
+让「▶ 演示」模式能真的点，也让画布能画出连线和单独面板。
+
+| 字段 | 说明 |
+|---|---|
+| `on` | 点击这个元素后发生什么，数组：`[{ "action": "...", "target": "id", "state": "..." }]`，可以写多条（依次执行） |
+| `hidden` | `true` = 默认不显示。被 toggle / show 指向时，画布上画成旁边的单独面板并连线，原位置留「在这里展开」的槽位；没人指向时表示「按条件出现」，演示模式左侧可以手动打开 |
+| `states` | 这个元素的其他样子：`{ "状态名": { 要覆盖的字段 } }`，如 `{ "open": { "label": "▾ 已结束 57" } }` |
+| `state` | 当前状态名（不写 = 默认样子） |
+
+action：
+
+| action | 效果 | target |
+|---|---|---|
+| `open` | 打开弹层（modal 居中变暗、drawer 右侧滑出、menu / popover 贴着按钮）；target 是普通元素时等于 show | 必填 |
+| `close` | 关闭弹层 | 可省略，默认关闭自己所在的弹层 |
+| `navigate` | 跳到另一个 page | page id |
+| `toggle` | 展开 / 收起（hidden 元素或弹层） | 必填 |
+| `show` / `hide` | 显示 / 隐藏 | 必填 |
+| `state` | 切换状态；写了 state 就切到它，没写就在几个状态间轮换 | 可省略，默认自己 |
+| `back` | 关闭最上层弹层，或回到上一屏 | — |
+
+弹层上的 `trigger` 等价于触发按钮上的 `{ "action": "open" }`，两种写一种就行。
+
+```jsonc
+{ "id": "g-worker", "type": "button", "label": "✓ worker · 46 秒", "on": [{ "action": "toggle", "target": "td-node" }] },
+{ "id": "td-node", "type": "section", "label": "这个 agent 说了什么", "hidden": true, "children": [ ... ] },
+{ "id": "ac-btn", "type": "button", "label": "验收通过",
+  "states": { "done": { "label": "已验收", "variant": "ghost" } },
+  "on": [{ "action": "state", "target": "ac-btn", "state": "done" }] }
+```
+
 ## Flow
 
 ~~~jsonc
