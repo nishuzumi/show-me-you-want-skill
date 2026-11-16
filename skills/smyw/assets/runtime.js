@@ -28,7 +28,7 @@ const TYPE_LABEL = {
   sidebar: '侧栏', toolbar: '工具栏', panel: '面板', group: '分组',
   modal: '弹窗', drawer: '抽屉', popover: '气泡浮层', menu: '下拉菜单',
   button: '按钮', link: '链接', input: '输入框', textarea: '多行输入', select: '下拉框',
-  checkbox: '复选框', radio: '单选组', toggle: '开关', upload: '上传',
+  checkbox: '复选框', radio: '单选组', toggle: 'Toggle 按钮', upload: '上传',
   heading: '标题', text: '文本', image: '图片', table: '表格', chart: '图表', stat: '数值',
   badge: '徽标', tag: '标签', icon: '图标', divider: '分割线', placeholder: '占位'
 };
@@ -556,7 +556,8 @@ function nodeBody(v, side) {
     case 'button': case 'link': case 'badge': case 'tag': out.push(h('span', { class: 'wf-lbl' }, label || tname(t))); break;
     case 'icon': out.push(h('span', { class: 'wf-lbl' }, '◎ ' + (label || ''))); break;
     case 'checkbox': out.push(h('span', { class: 'wf-lbl' }, '☐ ' + (label || '复选框'))); break;
-    case 'toggle': out.push(h('span', { class: 'wf-lbl' }, h('span', { class: 'wf-toggle' }), ' ' + (label || '开关'))); break;
+    case 'switch': out.push(h('span', { class: 'wf-lbl' }, h('span', { class: 'wf-toggle' }), ' ' + (label || '开关'))); break;
+    case 'toggle': out.push(h('span', { class: 'wf-lbl' }, h('span', { class: 'wf-toggle-btn' }, label || 'Toggle'))); break;
     case 'radio': if (label) out.push(h('div', { class: 'wf-flabel' }, label)); out.push(h('div', { class: 'wf-items' }, visItems(v, side, 'items').map((x) => h('span', null, '○ ', itemEl(x, side, ''))))); break;
     case 'input': case 'textarea': case 'select': case 'upload':
       if (label) out.push(h('div', { class: 'wf-flabel' }, label));
@@ -1494,9 +1495,10 @@ function commentItem(c) {
 }
 function buiBlock(type) {
   const bi = buiInfo(type); if (!bi) return null;
+  const imps = [{ name: bi.name, pkg: bi.pkg }].concat(bi.extraImports || []);
   return h('div', { class: 'dt-block bui' },
     h('div', { class: 'sec-t' }, 'Base UI · ' + bi.name),
-    h('code', { class: 'bui-import' }, "import { " + bi.name + " } from '" + BUI.package + "/" + bi.pkg + "'"),
+    imps.map((im) => h('code', { class: 'bui-import' }, "import { " + im.name + " } from '" + BUI.package + "/" + im.pkg + "'")),
     h('div', { class: 'hint' }, bi.summary),
     h('div', { class: 'bui-parts', title: '组合这些 parts' }, bi.parts.join(' · ')));
 }

@@ -15,11 +15,11 @@ smyw 的 spec 用 **Base UI** 的原语来拼界面。写 spec 时，先把界�
 | `input` | Input | `@base-ui/react/input` | `<Input>` |
 | `field` | Field | `@base-ui/react/field` | `Root > Label + Control + Description + Error` |
 | `fieldset` | Fieldset | `@base-ui/react/fieldset` | `Root > Legend` |
-| `form` | Form | `@base-ui/react/form` | `<Form>` + `Field.Root` |
+| `form` | Form + Field | `@base-ui/react/form` + `@base-ui/react/field` | `<Form>` + `Field.Root` |
 | `checkbox` | Checkbox | `@base-ui/react/checkbox` | `Root > Indicator` |
-| `checkbox-group` | CheckboxGroup | `@base-ui/react/checkbox-group` | `CheckboxGroup > Checkbox.Root` |
+| `checkbox-group` | CheckboxGroup + Checkbox | `@base-ui/react/checkbox-group` + `@base-ui/react/checkbox` | `CheckboxGroup > Checkbox.Root` |
 | `switch` | Switch | `@base-ui/react/switch` | `Root > Thumb` |
-| `radio-group` | RadioGroup | `@base-ui/react/radio-group` | `RadioGroup > Radio.Root > Indicator` |
+| `radio-group` | RadioGroup + Radio | `@base-ui/react/radio-group` + `@base-ui/react/radio` | `RadioGroup > Radio.Root > Indicator` |
 | `select` | Select | `@base-ui/react/select` | `Root > Label + Trigger > Value/Icon + Portal > Positioner > Popup > List > Item` |
 | `combobox` | Combobox | `@base-ui/react/combobox` | `Root > InputGroup > Input + Trigger + Portal > Positioner > Popup > List > Item` |
 | `autocomplete` | Autocomplete | `@base-ui/react/autocomplete` | `Root > InputGroup > Input + Portal > Positioner > Popup > List > Item` |
@@ -27,12 +27,12 @@ smyw 的 spec 用 **Base UI** 的原语来拼界面。写 spec 时，先把界�
 | `number-field` | NumberField | `@base-ui/react/number-field` | `Root > Group > Decrement + Input + Increment` |
 | `otp-field` | OTPField | `@base-ui/react/otp-field` | `Root > Input + Separator` |
 | `toggle` | Toggle | `@base-ui/react/toggle` | `<Toggle>` |
-| `toggle-group` | ToggleGroup | `@base-ui/react/toggle-group` | `ToggleGroup > Toggle` |
+| `toggle-group` | ToggleGroup + Toggle | `@base-ui/react/toggle-group` + `@base-ui/react/toggle` | `ToggleGroup > Toggle` |
 | `tabs` | Tabs | `@base-ui/react/tabs` | `Root > List > Tab + Indicator + Panel` |
 | `accordion` | Accordion | `@base-ui/react/accordion` | `Root > Item > Header > Trigger + Panel` |
 | `collapsible` | Collapsible | `@base-ui/react/collapsible` | `Root > Trigger + Panel` |
 | `toolbar` | Toolbar | `@base-ui/react/toolbar` | `Root > Button / Link / Separator / Group / Input` |
-| `menubar` | Menubar | `@base-ui/react/menubar` | `Menubar > Menu.Root > Menu.Trigger + Menu.Popup > Item` |
+| `menubar` | Menubar + Menu | `@base-ui/react/menubar` + `@base-ui/react/menu` | `Menubar > Menu.Root > Menu.Trigger + Menu.Popup > Item` |
 | `navigation-menu` | NavigationMenu | `@base-ui/react/navigation-menu` | `Root > List > Item > Trigger + Content > Link` |
 | `avatar` | Avatar | `@base-ui/react/avatar` | `Root > Image + Fallback` |
 | `separator` | Separator | `@base-ui/react/separator` | `<Separator>` |
@@ -54,10 +54,13 @@ smyw 的 spec 用 **Base UI** 的原语来拼界面。写 spec 时，先把界�
 | 旧 `type` | 建议改用的 Base UI `type` |
 |---|---|
 | `modal` | `dialog`（必须确认时用 `alert-dialog`） |
-| `toggle` | `switch` |
 | `radio` | `radio-group` |
 | `divider` | `separator` |
 | `select` / `checkbox` / `tabs` / `toolbar` / `button` / `input` / `form` / `drawer` / `popover` / `menu` | 同名（已经按 Base UI 组件画） |
+
+`toggle` 不是旧类型，也不是 `switch` 的别名：它是 Base UI 的 Toggle（可按下的按钮），用于工具栏等按下 / 弹起的按钮；开 / 关设置用 `switch`。旧方案里用 `toggle` 表示开关的，请迁移到 `switch`。
+
+有些组件要同时引入多个子包（如 `Form` + `Field`、`RadioGroup` + `Radio`、`CheckboxGroup` + `Checkbox`、`ToggleGroup` + `Toggle`、`Menubar` + `Menu`）；上表用 `+` 全部列出，预览详情也会逐条显示这些 import。
 
 ## 在 spec 里怎么拼
 

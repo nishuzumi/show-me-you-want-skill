@@ -50,6 +50,15 @@
                 "change": "added",
                 "states": { "on": { "label": "接收邀请邮件" } },
                 "on": [{ "action": "state", "target": "notify-switch", "state": "on" }]
+              },
+              {
+                "id": "compact-toggle",
+                "type": "toggle",
+                "component": "<Toggle> CompactToggle.tsx",
+                "label": "紧凑视图",
+                "change": "added",
+                "states": { "on": { "label": "紧凑视图" } },
+                "on": [{ "action": "state", "target": "compact-toggle", "state": "on" }]
               }
             ]
           },
@@ -99,7 +108,6 @@
               {
                 "id": "quota",
                 "type": "section",
-                "label": "用量与配额",
                 "change": "added",
                 "children": [
                   { "id": "quota-progress", "type": "progress", "label": "本月用量", "value": 72, "change": "added" },
@@ -108,17 +116,17 @@
               },
               {
                 "id": "prefs",
-                "type": "field",
-                "label": "通知偏好",
+                "type": "fieldset",
+                "label": "摘要邮件",
                 "change": "added",
                 "children": [
                   {
                     "id": "prefs-field",
                     "type": "field",
-                    "label": "摘要邮件",
+                    "label": "发送频率",
                     "change": "added",
                     "children": [
-                      { "id": "prefs-select", "type": "select", "label": "发送频率", "text": "每天", "items": ["每天", "每周", "从不"], "change": "added" }
+                      { "id": "prefs-select", "type": "select", "text": "每天", "items": ["每天", "每周", "从不"], "change": "added" }
                     ]
                   },
                   { "id": "prefs-sep", "type": "separator", "change": "added" },
@@ -140,7 +148,7 @@
                 "label": "团队名称",
                 "change": "added",
                 "children": [
-                  { "id": "team-name", "type": "input", "label": "团队名称", "text": "Nishu Studio", "change": "added" }
+                  { "id": "team-name", "type": "input", "text": "Nishu Studio", "change": "added" }
                 ]
               },
               { "id": "team-save", "type": "button", "label": "保存", "variant": "primary", "change": "added" }
@@ -164,10 +172,10 @@
               "label": "邮箱",
               "change": "added",
               "children": [
-                { "id": "invite-email", "type": "input", "label": "邮箱", "text": "name@example.com", "change": "added" }
+                { "id": "invite-email", "type": "input", "text": "name@example.com", "change": "added" }
               ]
             },
-            { "id": "invite-role", "type": "select", "label": "角色", "text": "成员", "items": ["管理员", "成员"], "change": "added" },
+            { "id": "invite-role", "type": "radio-group", "label": "角色", "items": ["管理员", "成员"], "change": "added" },
             {
               "id": "invite-send",
               "type": "button",

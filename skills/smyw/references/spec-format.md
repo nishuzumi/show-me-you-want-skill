@@ -83,7 +83,8 @@ smyw 用 **Base UI** 作为组件框架。`type` 优先写 Base UI 的原语（�
 - 表单 / 控件：`button` `input` `textarea` `field` `fieldset` `form` `checkbox` `checkbox-group` `switch` `radio-group` `select` `combobox` `autocomplete` `number-field` `otp-field` `slider` `toggle` `toggle-group` `upload`
 - 容器 / 导航：`tabs` `accordion` `collapsible` `toolbar` `menubar` `navigation-menu` `scroll-area` `section` `row` `col` `grid` `card` `list` `item` `nav` `header` `footer` `sidebar` `panel` `group` `page`
 - 展示：`avatar` `progress` `meter` `separator` `heading` `text` `image` `table` `chart` `stat` `badge` `tag` `icon` `link`
-- 旧类型（继续可用，但新方案优先用对应的 Base UI 类型）：`modal` → `dialog`，`toggle` → `switch`，`radio` → `radio-group`，`divider` → `separator`
+- 旧类型（继续可用，但新方案优先用对应的 Base UI 类型）：`modal` → `dialog`，`radio` → `radio-group`，`divider` → `separator`
+- `toggle` 与 `switch` 不同：`toggle` 是 Base UI 的 Toggle（可按下的按钮），开 / 关设置用 `switch`；旧方案里用 `toggle` 表示开关的，迁移到 `switch`
 - `placeholder`：带斜纹的虚线框。只用于「这里将来会有内容」之类的占位；**没改动的模块不要用它**，画成真实模块、不展开 children 即可（显示「内容不变，未展开」）
 
 `row` `nav` `toolbar` `header` `footer` `item` `menubar` `navigation-menu` `toggle-group` 默认横向排列。

@@ -209,6 +209,8 @@ const sub = await ev('return !!document.querySelector(".pl-ov [data-id=as-3-sub]
 check('a dropdown opens anchored under its button (no dim) and its sub-menu expands in place', mn && mn.below && !mn.dim && sub, { mn, sub });
 await ev('smyw.state.comments = []; smyw.play.stop(); return 1');
 await ev('smyw.focusUnit("reply"); return true'); await sleep(600);
+const fbi = await ev('return [...document.querySelectorAll("#inspector .bui-import")].map(x => x.textContent)');
+check('form detail shows both Form and Field imports', fbi.some((t) => t.includes("@base-ui/react/form")) && fbi.some((t) => t.includes("@base-ui/react/field")), fbi);
 await shot('07-helpdesk-unit');
 
 console.log('base-ui example (Base UI primitives)');
@@ -222,6 +224,19 @@ check('Base UI detail shows the Dialog import and anatomy', !!dbi && dbi.importO
 await ev('smyw.ui.sel = { kind: "node", page: "team-settings", id: "notify-switch", side: "after" }; smyw.render(); return 1'); await sleep(300);
 const sbi = await ev('return [...document.querySelectorAll("#inspector .bui")].map(x => x.textContent).join(" | ")');
 check('switch detail maps to Base UI Switch', /Base UI · Switch/.test(sbi) && /@base-ui\/react\/switch/.test(sbi), sbi);
+await ev('smyw.ui.sel = { kind: "node", page: "team-settings", id: "compact-toggle", side: "after" }; smyw.render(); return 1'); await sleep(300);
+const tbi = await ev('return [...document.querySelectorAll("#inspector .bui")].map(x => x.textContent).join(" | ")');
+check('toggle detail maps to Base UI Toggle, not Switch', /Base UI · Toggle/.test(tbi) && /@base-ui\/react\/toggle/.test(tbi) && !/@base-ui\/react\/switch/.test(tbi), tbi);
+const swt = await ev('return { sw: !!document.querySelector("#cv-world [data-id=notify-switch] .wf-toggle"), tb: !!document.querySelector("#cv-world [data-id=compact-toggle] .wf-toggle-btn") }');
+check('Switch renders as a switch and Toggle as a toggle button', swt.sw && swt.tb, swt);
+await ev('smyw.ui.sel = { kind: "node", page: "team-settings", id: "invite-role", side: "after" }; smyw.render(); return 1'); await sleep(300);
+const rbi = await ev('return [...document.querySelectorAll("#inspector .bui-import")].map(x => x.textContent)');
+check('radio-group detail shows both RadioGroup and Radio imports', rbi.some((t) => t.includes("@base-ui/react/radio-group")) && rbi.some((t) => t.includes("@base-ui/react/radio")), rbi);
+const exF = await ev('return { team: document.querySelector("#cv-world [data-id=team-name-field]").textContent, invite: document.querySelector("#cv-world [data-id=invite-email-field]").textContent, fieldset: !!document.querySelector("#cv-world [data-bui=fieldset]") }');
+const countText = (s, w) => s.split(w).length - 1;
+check('field example labels each field once and groups with Fieldset', countText(exF.team, '团队名称') === 1 && countText(exF.invite, '邮箱') === 1 && exF.fieldset, exF);
+const exA = await ev('const a = document.querySelector("#cv-world [data-id=advanced]"); return { items: [...a.querySelectorAll(":scope > .wf-items .wf-it")].map((x) => x.textContent), caps: [...a.querySelectorAll(".wf-cap")].map((x) => x.textContent) }');
+check('accordion example does not repeat item headers', JSON.stringify(exA.items) === JSON.stringify(["用量与配额", "通知偏好"]) && !exA.caps.includes("用量与配额") && !exA.caps.includes("通知偏好"), exA);
 await ev('smyw.play.start("team-settings"); return 1'); await sleep(300);
 await ev('document.querySelector("#pl-frame [data-ia][data-id=invite]").click(); return 1'); await sleep(300);
 const bplay = await ev('return { open: !!document.querySelector(".pl-back-modal [data-bui=dialog]"), dim: !!document.querySelector(".pl-back-modal.dim") }');

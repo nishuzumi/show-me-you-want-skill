@@ -48,7 +48,7 @@ whenToUse: 用户提出新功能、改版或重构，且会新增/删除/修改�
 - 用户的结构修改以补丁形式回来（见第 6、7 步），由脚本应用，不需要你读全量方案。
 
 **组件框架：Base UI。** 界面用 Base UI 的原语来拼，不要用抽象方框代替真实组件：
-- `type` 写 Base UI 组件名：`dialog` / `alert-dialog` / `drawer` / `popover` / `preview-card` / `tooltip` / `menu` / `context-menu` / `toast` / `switch` / `checkbox` / `checkbox-group` / `radio-group` / `select` / `combobox` / `autocomplete` / `input` / `field` / `fieldset` / `form` / `number-field` / `otp-field` / `slider` / `progress` / `meter` / `tabs` / `accordion` / `collapsible` / `toolbar` / `menubar` / `navigation-menu` / `toggle` / `toggle-group` / `avatar` / `separator` / `button`。旧类型 `modal` / `toggle` / `radio` / `divider` 也还能用，但新方案优先用对应的 Base UI 类型。
+- `type` 写 Base UI 组件名：`dialog` / `alert-dialog` / `drawer` / `popover` / `preview-card` / `tooltip` / `menu` / `context-menu` / `toast` / `switch` / `checkbox` / `checkbox-group` / `radio-group` / `select` / `combobox` / `autocomplete` / `input` / `field` / `fieldset` / `form` / `number-field` / `otp-field` / `slider` / `progress` / `meter` / `tabs` / `accordion` / `collapsible` / `toolbar` / `menubar` / `navigation-menu` / `toggle` / `toggle-group` / `avatar` / `separator` / `button`。旧类型 `modal` / `radio` / `divider` 也还能用，但新方案优先用对应的 Base UI 类型；`toggle` 不是开关的旧名，它是 Base UI 的 Toggle 按钮（开/关设置请用 `switch`）。
 - 弹层用 `trigger` 指向打开它的按钮；展开 / 收起用 `hidden` + `on: toggle`；选中态用 `states` + `on: state`。预览的「▶ 演示」能真的点。具体切分见 `references/base-ui.md`。
 - `component` 写实现时要写的 Base UI 组件（如 `"<Dialog> InviteDialog.tsx"`），用户靠它把线框和代码对上。
 - **不要写样式**：Base UI 是 headless 的，颜色/间距/字体由项目决定；线框也不表达视觉。
@@ -140,6 +140,7 @@ Markdown 里包括：
 - 移动元素时直接改位置：会让左侧"改动前"也跟着变。请按"移动"规则写 removed + added 两个节点。
 - modified 却不写 before：用户看不出改了什么。
 - 把线框当视觉稿去还原 CSS：线框只是结构指南。
-- 用 `modal` / `toggle` / `radio` / `divider` 这些旧类型写新方案：优先用 `dialog` / `switch` / `radio-group` / `separator`，实现时直接对应 Base UI。
+- 用 `modal` / `radio` / `divider` 这些旧类型写新方案：优先用 `dialog` / `radio-group` / `separator`，实现时直接对应 Base UI。
+- 把开 / 关开关写成 `toggle`：开关用 `switch`；`toggle` 是可按下的 Toggle 按钮，不是 switch 的旧名。
 - 把弹层内容写在页面树里而不是 `page.overlays`：用户看不到触发连线，演示模式也打不开。
 - 用「点开看」「点了才出现」这类文字描述交互，却不写 `on` / `hidden` / `states`：预览和演示都动不起来。

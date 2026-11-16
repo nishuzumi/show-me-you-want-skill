@@ -53,7 +53,7 @@ cp -r skills/smyw <你的项目>/.claude/skills/smyw
 
 仓库里带了几个已经生成好的示例，下载后用浏览器直接打开就能玩：
 
-- [`skills/smyw/examples/base-ui/preview.html`](skills/smyw/examples/base-ui/preview.html)：用 Base UI 组件拼的团队设置页（Dialog / Menu / Switch / Tabs / Accordion / Progress / Slider）
+- [`skills/smyw/examples/base-ui/preview.html`](skills/smyw/examples/base-ui/preview.html)：用 Base UI 组件拼的团队设置页（Dialog / Menu / Switch / Toggle / Tabs / Accordion / Progress / Slider）
 - [`skills/smyw/examples/helpdesk-ai/preview.html`](skills/smyw/examples/helpdesk-ai/preview.html)：一整屏的例子（客服工作台加 AI 建议回复）
 - [`skills/smyw/examples/task-tags/preview.html`](skills/smyw/examples/task-tags/preview.html)：多页面的例子（整页新增 / 整页删除）
 
@@ -68,9 +68,11 @@ node skills/smyw/scripts/build.mjs skills/smyw/examples/helpdesk-ai/spec.json
 spec 里的 `type` 直接写 Base UI 的原语，Agent 按组件来拼：
 
 - 弹层：`dialog` / `alert-dialog` / `drawer` / `popover` / `preview-card` / `tooltip` / `menu` / `context-menu` / `toast`；
-- 控件：`button` / `input` / `field` / `form` / `select` / `combobox` / `autocomplete` / `switch` / `checkbox` / `radio-group` / `slider` / `number-field` / `otp-field`；
+- 控件：`button` / `input` / `field` / `form` / `select` / `combobox` / `autocomplete` / `switch` / `toggle` / `toggle-group` / `checkbox` / `radio-group` / `slider` / `number-field` / `otp-field`；
 - 容器：`tabs` / `accordion` / `collapsible` / `toolbar` / `menubar` / `navigation-menu` / `scroll-area`；
 - 展示：`avatar` / `progress` / `meter` / `separator`。
+
+`toggle` 是可按下的 Toggle 按钮（适合工具栏），`switch` 是开 / 关开关；两者不是同一个组件。
 
 预览会把这些组件画成线框，并在右侧详情里给出对应的 `import { Dialog } from '@base-ui/react/dialog'`、一句话说明和需要组合的 parts。实现时 Agent 用同一套 Base UI 组件 + 项目自己的 CSS，不需要把线框的 div 照搬过去。完整映射和每个组件的 anatomy 见 [`skills/smyw/references/base-ui.md`](skills/smyw/references/base-ui.md)。
 

@@ -97,6 +97,12 @@
         "Checkbox.Root",
         "Checkbox.Indicator"
       ],
+      "extraImports": [
+        {
+          "name": "Checkbox",
+          "pkg": "checkbox"
+        }
+      ],
       "base": "group",
       "container": true,
       "items": true
@@ -229,6 +235,12 @@
         "Field.Control",
         "Field.Error"
       ],
+      "extraImports": [
+        {
+          "name": "Field",
+          "pkg": "field"
+        }
+      ],
       "base": "form",
       "container": true
     },
@@ -273,6 +285,12 @@
         "Menu.Trigger",
         "Menu.Popup",
         "Menu.Item"
+      ],
+      "extraImports": [
+        {
+          "name": "Menu",
+          "pkg": "menu"
+        }
       ],
       "base": "toolbar",
       "container": true,
@@ -399,6 +417,12 @@
         "Radio.Root",
         "Radio.Indicator"
       ],
+      "extraImports": [
+        {
+          "name": "Radio",
+          "pkg": "radio"
+        }
+      ],
       "base": "radio",
       "items": true
     },
@@ -410,6 +434,12 @@
         "RadioGroup",
         "Radio.Root",
         "Radio.Indicator"
+      ],
+      "extraImports": [
+        {
+          "name": "Radio",
+          "pkg": "radio"
+        }
       ],
       "base": "radio",
       "items": true
@@ -481,7 +511,7 @@
         "Root",
         "Thumb"
       ],
-      "base": "toggle",
+      "base": "switch",
       "inline": true
     },
     "tabs": {
@@ -536,6 +566,12 @@
       "parts": [
         "ToggleGroup",
         "Toggle"
+      ],
+      "extraImports": [
+        {
+          "name": "Toggle",
+          "pkg": "toggle"
+        }
       ],
       "base": "toolbar",
       "container": true,
