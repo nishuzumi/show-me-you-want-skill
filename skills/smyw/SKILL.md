@@ -1,6 +1,6 @@
 ---
 name: smyw
-description: smyw（show me you want）。在做会改动页面、交互流程或前后端接口的功能时，生成一个单文件 HTML「变更预览」：按真实界面画出每一整屏的线框（模块名和代码组件对得上），放在可拖动缩放的画布上，最外层改动的模块按编号画框（黄=修改，绿=新增，红=删除）；点编号查看这一处的改动前后、相关交互步骤和函数/接口。另有流程泳道和后端模块的前后对比。用户可以直接在 HTML 里拖动组件、把内联卡片改成按钮触发的弹窗/下拉菜单、改文字和组件类型、写批注和整体风格意见，然后复制结构化反馈粘贴回对话。纯前端单文件，不需要服务端。默认用于写代码之前的原型阶段，也可用于实现后回顾。
+description: smyw（show me you want）。在做会改动页面、交互流程或前后端接口的功能时，生成一个单文件 HTML「变更预览」：按真实界面画出每一整屏的线框（模块名和代码组件对得上），放在可拖动缩放的画布上，最外层改动的模块按编号画框（黄=修改，绿=新增，红=删除）；点编号查看这一处的改动前后、相关交互步骤和函数/接口。组件框架为 Base UI（@base-ui/react）：spec 的 type 直接写 Dialog / Switch / Tabs / Accordion / Select 等原语，实现时按同一套组件拼。另有流程泳道和后端模块的前后对比。用户可以直接在 HTML 里拖动组件、把内联卡片改成按钮触发的弹窗/下拉菜单、改文字和组件类型、写批注和整体风格意见，然后复制结构化反馈粘贴回对话。纯前端单文件，不需要服务端。默认用于写代码之前的原型阶段，也可用于实现后回顾。
 whenToUse: 用户提出新功能、改版或重构，且会新增/删除/修改页面、改变交互流程、或改动前后端接口时；用户说「出个原型」「先给我看看要改什么」「画个前后对比」「展示这次的变化」时；实现完成后需要向用户展示改了什么时。
 ---
 
@@ -12,6 +12,8 @@ whenToUse: 用户提出新功能、改版或重构，且会新增/删除/修改�
 - `scripts/build.mjs`：校验 spec，生成单文件 `preview.html`（纯前端、无外部依赖、离线可开）
 - `scripts/apply-feedback.mjs`：从用户粘贴回来的反馈里取出修改后的方案，生成下一版 spec
 - `references/spec-format.md`：spec 完整字段说明，**第一次写 spec 前先读一遍**
+- `references/base-ui.md`：**组件框架**。spec 的 `type` 用 Base UI 原语（`dialog` / `switch` / `accordion` / `select`…），写 spec 和实现前都先看它
+- `examples/base-ui/spec.json`：Base UI 组件示例（Dialog / Switch / Tabs / Accordion / Progress / Toast）
 - `examples/task-tags/spec.json`：完整示例（新增页、删除页、内联卡片、表格列变化、流程、后端）
 
 构建只需要 Node ≥ 18；生成的 HTML 是纯前端的，**不需要也不要启动任何服务**。**不要手写 HTML**：永远写 spec 再 build。
@@ -45,7 +47,13 @@ whenToUse: 用户提出新功能、改版或重构，且会新增/删除/修改�
 - 之后每一版**用编辑工具只改变动的地方**（改字段、插入/删除节点），不要整份重写，也不要为了改几处把整份 spec 重新读一遍。
 - 用户的结构修改以补丁形式回来（见第 6、7 步），由脚本应用，不需要你读全量方案。
 
-要点（完整说明见 references/spec-format.md，先看 `examples/helpdesk-ai/spec.json`）：
+**组件框架：Base UI。** 界面用 Base UI 的原语来拼，不要用抽象方框代替真实组件：
+- `type` 写 Base UI 组件名：`dialog` / `alert-dialog` / `drawer` / `popover` / `preview-card` / `tooltip` / `menu` / `context-menu` / `toast` / `switch` / `checkbox` / `checkbox-group` / `radio-group` / `select` / `combobox` / `autocomplete` / `input` / `field` / `fieldset` / `form` / `number-field` / `otp-field` / `slider` / `progress` / `meter` / `tabs` / `accordion` / `collapsible` / `toolbar` / `menubar` / `navigation-menu` / `toggle` / `toggle-group` / `avatar` / `separator` / `button`。旧类型 `modal` / `radio` / `divider` 也还能用，但新方案优先用对应的 Base UI 类型；`toggle` 不是开关的旧名，它是 Base UI 的 Toggle 按钮（开/关设置请用 `switch`）。
+- 弹层用 `trigger` 指向打开它的按钮；展开 / 收起用 `hidden` + `on: toggle`，Tabs 切换用 `hidden` + `on: show/hide`；选中态用 `states` + `on: state`。预览的「▶ 演示」能真的点。具体切分见 `references/base-ui.md`。
+- `component` 写实现时要写的 Base UI 组件（如 `"<Dialog> InviteDialog.tsx"`），用户靠它把线框和代码对上。
+- **不要写样式**：Base UI 是 headless 的，颜色/间距/字体由项目决定；线框也不表达视觉。
+
+要点（完整说明见 references/spec-format.md，先看 `references/base-ui.md` 和 `examples/base-ui/spec.json`）：
 - **一棵合并树**：同一棵树同时描述前后两侧。每个节点用 `change` 标注 `added / removed / modified`，不写就是不变。
 - **在最外层标注**：整块模块是新增或删除时，只在这个模块上写 `change`，里面的子元素**不要**再逐个标。预览只给最外层改动的模块画框编号（黄 = 修改，绿 = 新增，红 = 删除），用户点编号再看这一处的改动前后。
 - **修改**：`change: "modified"`，旧值写在 `before` 里（如 `"before": {"label": "添加"}`），旧值不存在就写 `null`。容器改了名、里面又加了几块时，容器标 modified，新加的子块各自标 added。
@@ -114,13 +122,14 @@ Markdown 里包括：
    - 要先看补丁会改成什么样，加 `--dry-run`。
 2. 在新 spec 上落实批注、回答和整体意见，然后重新 build，告诉用户刷新页面（或重新打开文件）。新版本的页面从干净状态开始，旧版本里的标注不会带过来。
 3. 「必须改」全部落实；「建议」尽量采纳，不采纳就说明理由；「疑问」先回答。
-4. 样式/风格类意见在线框里体现不出来：写进 `changes`（area: frontend）或相关节点的 note，实现时按项目现有的设计规范和组件库落实，必要时去找用户给的参考。
+4. 样式/风格类意见在线框里体现不出来：写进 `changes`（area: frontend）或相关节点的 note，实现时按项目现有的设计规范落在 Base UI 的 part 上，必要时去找用户给的参考。
 5. 用户的结构修改意图不清楚时（例如加了一个空按钮、把组件拖进弹窗但没说触发方式），问一句，不要猜。
 6. 回复用户时列出：采纳了什么、没采纳什么及原因、还要确认什么。
 7. 用户已确认方案，并且没有未处理的「必须改」，就开始实现。
+8. **实现用 Base UI**：按 spec 的 `type` 从 `@base-ui/react/<component>` 引入 Root / Trigger / Portal / Popup / Item 等 part，用 `render` prop 接项目自己的按钮和控件，样式写在项目自己的 CSS 里。不要把预览里的线框 `div` 照搬成实现，也不要自己手写 Dialog / Menu 的可访问性逻辑。具体见 `references/base-ui.md`。
 
 ### 8. 实现后（可选）
-实现完成后，用户要求或变化较大时：spec 改成 `stage: "done"`，按实际代码修正（包括实现中新增的接口、改名的函数），偏差写进 note，重新 build 给用户回顾。
+实现完成后，用户要求或变化较大时：spec 改成 `stage: "done"`，按实际代码修正（包括实现中新增的接口、改名的函数），偏差写进 note，重新 build 给用户回顾。实现后重新回顾时，可以把 spec 的 `type` 同步成最终使用的 Base UI 组件。
 
 ## 常见错误
 - 把一整屏拆成好几个 page（「侧栏」「详情」各一个）：用户看到的同一屏要画在同一个 page 里。
@@ -131,3 +140,7 @@ Markdown 里包括：
 - 移动元素时直接改位置：会让左侧"改动前"也跟着变。请按"移动"规则写 removed + added 两个节点。
 - modified 却不写 before：用户看不出改了什么。
 - 把线框当视觉稿去还原 CSS：线框只是结构指南。
+- 用 `modal` / `radio` / `divider` 这些旧类型写新方案：优先用 `dialog` / `radio-group` / `separator`，实现时直接对应 Base UI。
+- 把开 / 关开关写成 `toggle`：开关用 `switch`；`toggle` 是可按下的 Toggle 按钮，不是 switch 的旧名。
+- 把弹层内容写在页面树里而不是 `page.overlays`：用户看不到触发连线，演示模式也打不开。
+- 用「点开看」「点了才出现」这类文字描述交互，却不写 `on` / `hidden` / `states`：预览和演示都动不起来。

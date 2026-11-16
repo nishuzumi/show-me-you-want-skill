@@ -10,16 +10,30 @@ const BT = '\u0060';
 const FENCE = BT + BT + BT;
 
 // ------------------------------------------------------------------ vocabulary
+/* Base UI is the component framework the agent composes with. A spec node's `type` can be any
+ * Base UI primitive (dialog / switch / accordion / select …); the low-fi renderer draws each one
+ * through a wireframe base type so the preview stays a single dependency-free HTML file. */
+const BUI = (() => {
+  try { return JSON.parse(document.getElementById('smyw-bui').textContent); } catch (e) { return { components: {} }; }
+})();
+const BUI_C = BUI.components || {};
+const BASE_TYPE = {};
+Object.keys(BUI_C).forEach((k) => { BASE_TYPE[k] = BUI_C[k].base || k; });
+function own(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+function bt(t) { return own(BASE_TYPE, t) ? BASE_TYPE[t] : t; }
+function buiInfo(t) { if (own(BUI_C, t)) return BUI_C[t]; const b = bt(t); return b !== t && own(BUI_C, b) ? BUI_C[b] : null; }
+
 const TYPE_LABEL = {
   page: '页面', section: '区块', row: '横排', col: '竖排', grid: '网格', card: '卡片', form: '表单',
   list: '列表', item: '列表项', nav: '导航', tabs: '标签页', header: '页头', footer: '页脚',
   sidebar: '侧栏', toolbar: '工具栏', panel: '面板', group: '分组',
   modal: '弹窗', drawer: '抽屉', popover: '气泡浮层', menu: '下拉菜单',
   button: '按钮', link: '链接', input: '输入框', textarea: '多行输入', select: '下拉框',
-  checkbox: '复选框', radio: '单选组', toggle: '开关', upload: '上传',
+  checkbox: '复选框', radio: '单选组', toggle: 'Toggle 按钮', upload: '上传',
   heading: '标题', text: '文本', image: '图片', table: '表格', chart: '图表', stat: '数值',
   badge: '徽标', tag: '标签', icon: '图标', divider: '分割线', placeholder: '占位'
 };
+Object.keys(BUI_C).forEach((k) => { if (!TYPE_LABEL[k]) TYPE_LABEL[k] = BUI_C[k].name || k; });
 const TYPE_ORDER = Object.keys(TYPE_LABEL);
 const CONTAINER = new Set(['page', 'section', 'row', 'col', 'grid', 'card', 'form', 'list', 'item', 'nav', 'tabs', 'header', 'footer', 'sidebar', 'toolbar', 'panel', 'group', 'modal', 'drawer', 'popover', 'menu']);
 const ROW_TYPES = new Set(['row', 'nav', 'toolbar', 'header', 'footer', 'item']);
@@ -27,6 +41,16 @@ const OVERLAY = new Set(['modal', 'drawer', 'popover', 'menu']);
 const INLINE = new Set(['button', 'link', 'badge', 'tag', 'icon', 'checkbox', 'toggle']);
 const ITEMS_TYPES = new Set(['nav', 'tabs', 'list', 'select', 'radio', 'menu']);
 const USES_TEXT = new Set(['input', 'textarea', 'select', 'stat', 'upload']);
+Object.keys(BUI_C).forEach((k) => {
+  const c = BUI_C[k];
+  const base = c.base || k;
+  if (c.container) { CONTAINER.add(k); CONTAINER.add(base); }
+  if (c.row) { ROW_TYPES.add(k); ROW_TYPES.add(base); }
+  if (c.overlay) { OVERLAY.add(k); OVERLAY.add(base); }
+  if (c.inline) { INLINE.add(k); INLINE.add(base); }
+  if (c.items) { ITEMS_TYPES.add(k); ITEMS_TYPES.add(base); }
+  if (c.text) { USES_TEXT.add(k); USES_TEXT.add(base); }
+});
 const TRIGGER_TYPES = new Set(['button', 'link', 'icon', 'item', 'tag', 'badge', 'text', 'image', 'heading']);
 const CHANGE_LABEL = { added: '新增', removed: '删除', modified: '修改', unchanged: '不变' };
 const CHANGES = new Set(Object.keys(CHANGE_LABEL));
@@ -39,16 +63,16 @@ const CATS = ['位置/布局', '交互方式', '组件类型', '样式/风格', 
 const SEVS = ['必须改', '建议', '疑问'];
 const STYLE_TAGS = ['整体风格不符', '和现有页面不统一', '配色', '信息密度过高', '信息密度过低', '层级/导航不清', '交互方式不对', '文案语气', '移动端适配'];
 const PALETTE = [
-  ['容器', ['section', 'row', 'card', 'form', 'list', 'item', 'tabs', 'toolbar']],
-  ['浮层', ['modal', 'drawer', 'menu', 'popover']],
-  ['控件', ['button', 'link', 'input', 'textarea', 'select', 'checkbox', 'radio', 'toggle', 'upload']],
+  ['Base UI', ['dialog', 'drawer', 'popover', 'menu', 'select', 'switch', 'checkbox', 'tabs', 'accordion', 'toolbar', 'field', 'form', 'toast', 'tooltip', 'avatar', 'progress', 'separator', 'button', 'input']],
+  ['容器', ['section', 'row', 'card', 'list', 'item']],
+  ['控件', ['link', 'textarea', 'upload', 'radio']],
   ['展示', ['heading', 'text', 'table', 'image', 'chart', 'stat', 'badge', 'tag', 'icon', 'divider', 'placeholder']]
 ];
 const VARIANTS = [['', '默认'], ['primary', '主要'], ['secondary', '次要'], ['danger', '危险'], ['ghost', '文字/幽灵'], ['icon', '仅图标']];
 const WIDTHS = [['', '自动'], ['1/4', '1/4'], ['1/3', '1/3'], ['1/2', '1/2'], ['2/3', '2/3'], ['3/4', '3/4'], ['full', '整行']];
 const LAYOUTS = [['', '默认'], ['col', '纵向'], ['row', '横向'], ['grid', '网格']];
 const STEP_KINDS = [['', '普通步骤'], ['decision', '判断/分支'], ['note', '备注']];
-const FIELD_LABEL = { label: '文字', type: '类型', text: '说明', fn: '函数/行为', variant: '样式', w: '宽度', layout: '排列', cols: '列数', items: '选项', columns: '表格列', trigger: '触发按钮', name: '名称', route: '路由', note: '说明', actor: '执行方', kind: '类型', page: '关联页面', rows: '行数' };
+const FIELD_LABEL = { label: '文字', type: '类型', text: '说明', fn: '函数/行为', variant: '样式', w: '宽度', layout: '排列', cols: '列数', items: '选项', columns: '表格列', trigger: '触发按钮', name: '名称', route: '路由', note: '说明', actor: '执行方', kind: '类型', page: '关联页面', rows: '行数', value: '当前值' };
 const SKIP_COPY = new Set(['id', 'before', 'change', 'children', 'movedFrom', 'movedTo', '_um']);
 
 // ------------------------------------------------------------------ small utils
@@ -123,7 +147,7 @@ function curPage() { return pageById(ui.page) || S.spec.pages[0]; }
 function entries(p) { const out = []; const walk = (n, par, list) => { out.push({ n: n, par: par, list: list }); (n.children || []).forEach((c) => walk(c, n, n.children)); }; walk(p.root, null, null); p.overlays.forEach((o) => walk(o, null, p.overlays)); return out; }
 function findNode(p, id) { return entries(p).find((e) => e.n.id === id) || null; }
 function contains(a, b) { return a === b || (a.children || []).some((c) => contains(c, b)); }
-function isCont(n) { return CONTAINER.has(n.type) || !!(n.children && n.children.length); }
+function isCont(n) { return CONTAINER.has(bt(n.type)) || !!(n.children && n.children.length); }
 function afterVisibleIds(p) { const s = new Set(); const walk = (n) => { if (n.change === 'removed') return; s.add(n.id); (n.children || []).forEach(walk); }; walk(p.root); p.overlays.forEach(walk); return s; }
 function parentChain(p, id) { let chain = null; const walk = (n, path) => { if (n.id === id) { chain = path; return true; } return (n.children || []).some((c) => walk(c, path.concat([n]))); }; if (!walk(p.root, [])) p.overlays.some((o) => walk(o, [])); return chain || []; }
 function findBe(id) { for (const m of S.spec.backend) { if (m.id === id) return { m: m, item: null }; const it = m.items.find((i) => i.id === id); if (it) return { m: m, item: it }; } return null; }
@@ -211,7 +235,7 @@ function insertAt(tgt, node, pos) {
 }
 
 // ------------------------------------------------------------------ labels
-function tname(t) { return TYPE_LABEL[t] || t || '元素'; }
+function tname(t) { return own(TYPE_LABEL, t) ? TYPE_LABEL[t] : (t || '元素'); }
 function nlabel(n) { const s = short(n.label || n.text || (Array.isArray(n.items) && n.items.length ? itemText(n.items[0]) : '') || n.fn || '', 20); return tname(n.type) + (s ? '「' + s + '」' : ''); }
 function ref(n) { return nlabel(n) + ' #' + n.id; }
 function pageName(p) { return (p && p.name) || (p && p.id) || ''; }
@@ -251,12 +275,21 @@ function selectNode(pid, id) { ui.sel = { kind: 'node', page: pid, id: id, side:
 function pfx(p) { return '页面「' + pageName(p) + '」：'; }
 
 function makeNode(type) {
-  const defaults = { button: '新按钮', heading: '新标题', text: '文本内容', input: '字段名', textarea: '字段名', select: '字段名', placeholder: '其余内容' };
+  const base = bt(type);
+  const defaults = {
+    button: '新按钮', heading: '新标题', text: '文本内容', input: '字段名', textarea: '字段名', select: '字段名', placeholder: '其余内容',
+    dialog: '新弹窗', 'alert-dialog': '确认操作', drawer: '新抽屉', popover: '新气泡', menu: '新菜单', 'context-menu': '右键菜单',
+    tooltip: '提示文字', 'preview-card': '预览卡片', toast: '操作成功', switch: '新开关', checkbox: '新复选框', 'checkbox-group': '多选',
+    tabs: '标签页', accordion: '折叠面板', collapsible: '可折叠区块', toolbar: '工具栏', menubar: '菜单栏', 'navigation-menu': '导航',
+    field: '字段', fieldset: '字段组', form: '表单', avatar: 'AB', progress: '进度', meter: '指标', slider: '滑块', separator: '',
+    'radio-group': '单选', combobox: '选择或输入', autocomplete: '搜索', 'number-field': '数量', 'otp-field': '验证码', 'scroll-area': '滚动区域'
+  };
   const n = { id: newId(), type: type, change: 'added' };
-  if (type !== 'divider') n.label = defaults[type] || ('新' + tname(type));
-  if (CONTAINER.has(type)) n.children = [];
-  if (type === 'table') n.columns = ['列 1', '列 2', '列 3'];
-  if (ITEMS_TYPES.has(type) && type !== 'list') n.items = ['选项 1', '选项 2'];
+  if (base !== 'divider') n.label = defaults[type] || ('新' + tname(type));
+  if (CONTAINER.has(type) || CONTAINER.has(base)) n.children = [];
+  if (type === 'table' || base === 'table') n.columns = ['列 1', '列 2', '列 3'];
+  if ((ITEMS_TYPES.has(type) || ITEMS_TYPES.has(base)) && base !== 'list') n.items = ['选项 1', '选项 2'];
+  if (base === 'progress' || type === 'slider') n.value = 60;
   return n;
 }
 function opMove(pid, id, dest) {
@@ -326,14 +359,15 @@ function opDuplicate(pid, id) {
   selectNode(pid, c.id);
   return { type: 'duplicate', page: pid, node: c.id, origin: id, desc: pfx(p) + '复制' + ref(e.n) + ' 为 #' + c.id };
 }
-/* Inline element -> overlay (modal / drawer / menu / popover) opened by a new button at the old spot. */
+/* Inline element -> overlay (dialog / drawer / menu / popover) opened by a new button at the old spot. */
 function opConvert(pid, id, kind) {
   const p = pageById(pid); const e = p && findNode(p, id); if (!e || !e.list || e.list === p.overlays) return false;
   const label = e.n.label || tname(e.n.type);
   const name = ref(e.n);
+  const kindName = kind === 'dialog' ? '弹窗' : tname(kind);
   const map = {};
   const content = afterClone(e.n, map);
-  const b = { id: newId(), type: 'button', label: kind === 'menu' ? label + ' ▾' : label, change: 'added', fn: 'onClick → 打开' + tname(kind) + '「' + short(label, 16) + '」' };
+  const b = { id: newId(), type: 'button', label: kind === 'menu' ? label + ' ▾' : label, change: 'added', fn: 'onClick → 打开' + kindName + '「' + short(label, 16) + '」' };
   const ov = { id: newId(), type: kind, label: label, change: 'added', trigger: b.id, children: [content] };
   // A card/section/form becomes the overlay itself (no "modal > card" double frame).
   const unwrap = ['card', 'section', 'form', 'panel', 'group', 'col'].indexOf(e.n.type) >= 0;
@@ -351,7 +385,7 @@ function opConvert(pid, id, kind) {
   remapTriggers(p, map);
   p.overlays.push(ov);
   selectNode(pid, b.id);
-  return { type: 'convert', page: pid, node: id, kind: kind, overlay: ov.id, trigger: b.id, desc: pfx(p) + '把' + name + '改成' + tname(kind) + ' #' + ov.id + '，原位置放一个按钮「' + b.label + '」#' + b.id + ' 点击后打开（按钮可再拖到别处）' };
+  return { type: 'convert', page: pid, node: id, kind: kind, overlay: ov.id, trigger: b.id, desc: pfx(p) + '把' + name + '改成' + kindName + ' #' + ov.id + '，原位置放一个按钮「' + b.label + '」#' + b.id + ' 点击后打开（按钮可再拖到别处）' };
 }
 function opAddPage() {
   const p = { id: newId(), name: '新页面', route: '', change: 'added', root: { id: newId(), type: 'page', change: 'added', children: [] }, overlays: [] };
@@ -517,14 +551,15 @@ function itemEl(x, side, cls) {
 function itemsStrip(v, side, cls, col) { return h('div', { class: 'wf-items' + (col ? ' col' : '') }, visItems(v, side, 'items').map((x) => itemEl(x, side, cls))); }
 function bars(n) { const out = h('div', { class: 'wf-bars' }); for (let i = 0; i < Math.min(Number(n) || 0, 6); i++) out.append(h('i', { style: { width: (92 - (i % 3) * 20) + '%' } })); return out; }
 function nodeBody(v, side) {
-  const t = v.type, out = [], label = v.label;
+  const t = bt(v.type), out = [], label = v.label;
   switch (t) {
     case 'heading': out.push(h('div', { class: 'wf-h' }, label || '标题')); break;
     case 'text': out.push(h('div', { class: 'wf-text' }, label || '')); if (v.lines) out.push(bars(v.lines)); break;
     case 'button': case 'link': case 'badge': case 'tag': out.push(h('span', { class: 'wf-lbl' }, label || tname(t))); break;
     case 'icon': out.push(h('span', { class: 'wf-lbl' }, '◎ ' + (label || ''))); break;
     case 'checkbox': out.push(h('span', { class: 'wf-lbl' }, '☐ ' + (label || '复选框'))); break;
-    case 'toggle': out.push(h('span', { class: 'wf-lbl' }, h('span', { class: 'wf-toggle' }), ' ' + (label || '开关'))); break;
+    case 'switch': out.push(h('span', { class: 'wf-lbl' }, h('span', { class: 'wf-toggle' }), ' ' + (label || '开关'))); break;
+    case 'toggle': out.push(h('span', { class: 'wf-lbl' }, h('span', { class: 'wf-toggle-btn' }, label || 'Toggle'))); break;
     case 'radio': if (label) out.push(h('div', { class: 'wf-flabel' }, label)); out.push(h('div', { class: 'wf-items' }, visItems(v, side, 'items').map((x) => h('span', null, '○ ', itemEl(x, side, ''))))); break;
     case 'input': case 'textarea': case 'select': case 'upload':
       if (label) out.push(h('div', { class: 'wf-flabel' }, label));
@@ -532,6 +567,21 @@ function nodeBody(v, side) {
       if (t === 'select' && v.items) out.push(itemsStrip(v, side, 'wf-it'));
       break;
     case 'image': case 'chart': out.push(h('div', { class: 'wf-media ' + t }, h('span', null, t === 'chart' ? '▁▃▅▇▅▃' : '⛶'), h('span', null, label || tname(t)))); break;
+    case 'avatar': out.push(h('div', { class: 'wf-avatar' }, String(label || '?').slice(0, 2).toUpperCase())); break;
+    case 'progress': {
+      if (label) out.push(h('div', { class: 'wf-flabel' }, label));
+      const raw = Number(v.value);
+      const pct = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : 60;
+      out.push(h('div', { class: 'wf-progress-row' }, h('div', { class: 'wf-progress' }, h('i', { style: { width: pct + '%' } })), h('span', { class: 'wf-progress-v' }, Number.isFinite(raw) ? pct + '%' : '')));
+      break;
+    }
+    case 'slider': {
+      if (label) out.push(h('div', { class: 'wf-flabel' }, label));
+      const raw = Number(v.value);
+      const pct = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : 40;
+      out.push(h('div', { class: 'wf-slider' }, h('i', { style: { width: pct + '%' } }), h('b', { style: { left: pct + '%' } }), h('span', null, Number.isFinite(raw) ? pct + '%' : '')));
+      break;
+    }
     case 'stat': if (v.text) out.push(h('div', { class: 'wf-stat' }, v.text)); out.push(h('div', { class: v.text ? 'wf-sub' : 'wf-stat sm' }, label || '指标')); break;
     case 'table': {
       if (label) out.push(h('div', { class: 'wf-cap' }, label));
@@ -577,7 +627,7 @@ function renderWF(n, p, o) {
     return slot;
   }
   const v = withState(n, view(n, eff), o.ctx);
-  const t = v.type, kids = v.children || [], cont = isCont(v);
+  const vt = v.type, t = bt(vt), kids = v.children || [], cont = isCont(v);
   const layout = v.layout || (ROW_TYPES.has(t) ? 'row' : 'col');
   const isRoot = n === p.root;
   const ghost = o.ghost || (side === 'merged' && n.change === 'removed');
@@ -592,7 +642,7 @@ function renderWF(n, p, o) {
   }
   const unit = o.unit || unitHere;
   const cls = ['wf', 't-' + t, cont ? 'is-c lay-' + layout : 'is-leaf', INLINE.has(t) ? 'inline' : '', v.variant ? 'v-' + v.variant : '', trig ? 'is-trigger' : '', mark, (unit || o.whole) ? 'in-chg' : '', n.hidden && o.ctx !== 'play' ? 'wf-cond' : ''].filter(Boolean).join(' ');
-  const el = h('div', { class: cls, 'data-kind': 'node', 'data-id': n.id, 'data-side': eff, 'data-unit': unit, 'data-partner': n.movedFrom || n.movedTo || null, title: o.ctx === 'canvas' ? (n.note || null) : null });
+  const el = h('div', { class: cls, 'data-kind': 'node', 'data-id': n.id, 'data-side': eff, 'data-unit': unit, 'data-partner': n.movedFrom || n.movedTo || null, 'data-bui': own(BUI_C, vt) ? vt : null, title: o.ctx === 'canvas' ? (n.note || null) : null });
   if (o.ctx === 'play' && trig) { el.setAttribute('data-ia', '1'); el.setAttribute('data-pg', p.id); }
   applyWidth(el, v.w, o.parentLayout);
   if (layout === 'grid') el.style.setProperty('--cols', String(v.cols || 2));
@@ -962,7 +1012,7 @@ function overlayFrame(x, p, o) {
   const v = view(x, ghost ? 'before' : 'after');
   const trs = trigList(v).map((t) => findNode(p, t)).filter(Boolean);
   const vs = ghost ? 'before' : 'after';
-  return h('div', { class: 'cv-ov', 'data-ov': x.id, 'data-anchor': trigList(v).join(' ') || null, 'data-trigger': trigList(v).join(' ') || null, 'data-change': ghost ? 'removed' : x.change, style: { width: (OV_W[v.type] || 420) + 'px' } },
+  return h('div', { class: 'cv-ov', 'data-ov': x.id, 'data-anchor': trigList(v).join(' ') || null, 'data-trigger': trigList(v).join(' ') || null, 'data-change': ghost ? 'removed' : x.change, style: { width: (OV_W[bt(v.type)] || OV_W[v.type] || 420) + 'px' } },
     h('div', { class: 'cv-ovh' }, '▸ ' + tname(v.type) + ' · ', trs.length ? ['点击 ', trs.map((t, i) => [i ? '、' : '', h('button', { class: 'lnk', onclick: (e) => { e.stopPropagation(); focusNode(p.id, t.n.id); } }, nlabel(view(t.n, vs)))]), ' 后出现'] : '未指定由哪个元素打开'),
     renderWF(x, p, o));
 }
@@ -978,7 +1028,7 @@ function revealPanel(n, p, o) {
   const sh = showersOf(n.id);
   const sub = { side: 'merged', ctx: 'canvas', parentLayout: 'col', asPanel: true, ghost: ghost || o.ghost,
     whole: o.whole || !!(anc && (anc.change === 'added' || anc.change === 'removed')), unit: o.unit || (anc ? anc.id : null) };
-  return h('div', { class: 'cv-ov cv-rev', 'data-ov': n.id, 'data-anchor': sh.map((x) => x.id).join(' '), 'data-slot': n.id, 'data-change': ghost ? 'removed' : (anc ? anc.change : n.change), style: { width: (Number(n.pw) || (n.type === 'list' || n.type === 'menu' ? 360 : 480)) + 'px' } },
+  return h('div', { class: 'cv-ov cv-rev', 'data-ov': n.id, 'data-anchor': sh.map((x) => x.id).join(' '), 'data-slot': n.id, 'data-change': ghost ? 'removed' : (anc ? anc.change : n.change), style: { width: (Number(n.pw) || (bt(n.type) === 'list' || bt(n.type) === 'menu' ? 360 : 480)) + 'px' } },
     h('div', { class: 'cv-ovh' }, '▸ 点击 ', sh.map((t, i) => [i ? '、' : '', h('button', { class: 'lnk', onclick: (e) => { e.stopPropagation(); focusNode(p.id, t.id); } }, nlabel(view(t, vs)))]),
       ' 后展开', parent ? ' · 在 ' + nlabel(view(parent, vs)) + ' 里' : '',
       h('button', { class: 'lnk', onclick: (e) => { e.stopPropagation(); const sl = document.querySelector('#cv-world .wf-slot[data-id="' + CSS.escape(n.id) + '"]'); if (sl) focusEl(sl); } }, '看位置')),
@@ -1070,6 +1120,7 @@ function unitDetail(u) {
   out.push(h('div', { class: 'dt-head' }, h('span', { class: 'u-dot u-' + u.change }, String(u.n)), h('b', null, unitTitle(u)), chgChip(u.change)));
   out.push(h('div', { class: 'ins-path' }, h('span', null, isPage ? (p.route || '') : '页面「' + pageName(p) + '」› ' + pathText(p, n, u.change === 'removed' ? 'before' : 'after')), h('code', null, '#' + u.id)));
   if (holder.component || (n && n.component)) out.push(h('div', { class: 'ins-path' }, '代码：', h('code', null, holder.component || n.component)));
+  if (!isPage) { const bb = buiBlock(n.type); if (bb) out.push(bb); }
   if (holder.note) out.push(h('div', { class: 'ins-note' }, h('b', null, 'Agent 说明：'), holder.note));
   if (!isPage && n.before && n.change === 'modified') out.push(diffBox(n));
   if (!isPage && (n.movedFrom || n.movedTo)) {
@@ -1089,7 +1140,7 @@ function unitDetail(u) {
     if (ids.has(x.id)) return;
     trigList(view(x, xs)).filter((tr) => ids.has(tr)).forEach((tr) => { const t = findNode(p, tr); inter.push(h('li', null, '点击 ', t ? nlabel(view(t.n, xs)) : '#' + tr, ' → 打开 ', h('button', { class: 'lnk', onclick: () => focusNode(p.id, x.id) }, '▸ ' + tname(x.type) + '「' + short(x.label || '', 18) + '」'))); });
   });
-  if (!isPage && OVERLAY.has(n.type)) { const ts = trigList(view(n, n.change === 'removed' ? 'before' : 'after')).map((tr) => findNode(p, tr)).filter(Boolean); inter.push(h('li', null, '由 ', ts.length ? ts.map((t, i) => [i ? '、' : '', h('button', { class: 'lnk', onclick: () => focusNode(p.id, t.n.id) }, nlabel(t.n))]) : '（未指定的元素）', ' 打开')); }
+  if (!isPage && OVERLAY.has(bt(n.type))) { const ts = trigList(view(n, n.change === 'removed' ? 'before' : 'after')).map((tr) => findNode(p, tr)).filter(Boolean); inter.push(h('li', null, '由 ', ts.length ? ts.map((t, i) => [i ? '、' : '', h('button', { class: 'lnk', onclick: () => focusNode(p.id, t.n.id) }, nlabel(t.n))]) : '（未指定的元素）', ' 打开')); }
   S.spec.flows.forEach((f) => {
     f.steps.forEach((st, i) => {
       if (!stepRefs(st).some((r) => ids.has(r)) && !(isPage && st.page === p.id)) return;
@@ -1267,8 +1318,9 @@ function playOverlay(id, side) {
   const f = findNodeAnywhere(id); if (!f) return null;
   const n = f.e.n; if (!visible(n, side)) return null;
   const v = view(n, side);
-  const box = h('div', { class: 'pl-ov pl-ov-' + v.type, style: { width: (OV_W[v.type] || 420) + 'px' } }, renderWF(n, f.p, { side: side, ctx: 'play', parentLayout: 'col' }));
-  return h('div', { class: 'pl-back pl-back-' + v.type + (v.type === 'modal' || v.type === 'drawer' ? ' dim' : ''), 'data-close': id }, box);
+  const base = bt(v.type);
+  const box = h('div', { class: 'pl-ov pl-ov-' + base, style: { width: (OV_W[base] || OV_W[v.type] || 420) + 'px' } }, renderWF(n, f.p, { side: side, ctx: 'play', parentLayout: 'col' }));
+  return h('div', { class: 'pl-back pl-back-' + base + (base === 'modal' || base === 'drawer' ? ' dim' : ''), 'data-close': id }, box);
 }
 function renderPlay() {
   const P = ui.play; const p = pageById(P.page) || S.spec.pages[0];
@@ -1443,6 +1495,15 @@ function commentItem(c) {
     h('span', { style: 'margin-left:auto' }), h('button', { class: 'lnk', onclick: (e) => { e.stopPropagation(); mutate(() => { S.comments = S.comments.filter((x) => x.id !== c.id); return null; }); } }, '删除')),
     h('div', { class: 'ctext' }, c.text));
 }
+function buiBlock(type) {
+  const bi = buiInfo(type); if (!bi) return null;
+  const imps = [{ name: bi.name, pkg: bi.pkg }].concat(bi.extraImports || []);
+  return h('div', { class: 'dt-block bui' },
+    h('div', { class: 'sec-t' }, 'Base UI · ' + bi.name),
+    imps.map((im) => h('code', { class: 'bui-import' }, "import { " + im.name + " } from '" + BUI.package + "/" + im.pkg + "'")),
+    h('div', { class: 'hint' }, bi.summary),
+    h('div', { class: 'bui-parts', title: '组合这些 parts' }, bi.parts.join(' · ')));
+}
 function inspNode(s, compact) {
   const p = pageById(s.page); const e = p && findNode(p, s.id); if (!e) return null;
   const n = e.n, v = view(n, s.side);
@@ -1452,6 +1513,7 @@ function inspNode(s, compact) {
   if (!compact) out.push(h('div', { class: 'ins-head' }, h('span', { class: 'ins-type' }, tname(v.type)), h('b', null, v.label || ''), chgChip(chgOf(n, s.side) ? n.change : null)));
   if (!compact) out.push(h('div', { class: 'ins-path' }, h('span', null, (s.side === 'before' ? '改动前 › ' : '改动后 › ') + pathText(p, n, s.side)), h('code', null, '#' + n.id)));
   if (!compact && n.note) out.push(h('div', { class: 'ins-note' }, h('b', null, 'Agent 说明：'), n.note));
+  const bb = !compact && buiBlock(v.type); if (bb) out.push(bb);
   if (!compact && n.before && n.change === 'modified') out.push(diffBox(n));
   if (!compact && n.movedFrom || n.movedTo) out.push(h('div', { class: 'ins-note' }, n.movedFrom ? '这是从原位置移过来的。' : '这个元素被移到了新位置。', h('button', { class: 'lnk', onclick: () => focusNode(p.id, n.movedFrom || n.movedTo) }, '定位另一处')));
   if (editable) out.push(nodeEditor(p, n, e));
@@ -1478,18 +1540,19 @@ function nodeEditor(p, n, e) {
   const cont = isCont(n);
   const f = [];
   f.push(fld('组件类型', sel('type', n.type, TYPE_ORDER.map((k) => [k, tname(k) + '  ' + k]), ed('type'))));
-  if (n.type !== 'divider') f.push(fld(cont ? '标题（可空）' : '文字', inp('label', n.label, ed('label'))));
-  f.push(fld(USES_TEXT.has(n.type) ? '占位提示 / 示例值' : '补充说明（灰色小字）', inp('text', n.text, ed('text'), { multi: !USES_TEXT.has(n.type) })));
+  if (bt(n.type) !== 'divider') f.push(fld(cont ? '标题（可空）' : '文字', inp('label', n.label, ed('label'))));
+  f.push(fld(USES_TEXT.has(bt(n.type)) ? '占位提示 / 示例值' : '补充说明（灰色小字）', inp('text', n.text, ed('text'), { multi: !USES_TEXT.has(bt(n.type)) })));
   f.push(fld('函数 / 行为占位', inp('fn', n.fn, ed('fn'), { ph: '例如 onClick → openEditor()　或　GET /api/tags' })));
-  if (INLINE.has(n.type)) f.push(fld('样式变体', sel('variant', n.variant, VARIANTS, ed('variant'))));
+  if (INLINE.has(bt(n.type))) f.push(fld('样式变体', sel('variant', n.variant, VARIANTS, ed('variant'))));
   if (e.list && e.list !== p.overlays) f.push(fld('宽度', sel('w', n.w, WIDTHS, ed('w'))));
   if (cont) f.push(fld('子元素排列', sel('layout', n.layout, LAYOUTS, ed('layout'))));
   if (cont && n.layout === 'grid') f.push(fld('网格列数', inp('cols', n.cols, ed('cols'))));
-  if (ITEMS_TYPES.has(n.type)) f.push(fld('选项 / 条目（每行一个）', inp('items', visItems(n, 'after', 'items').map(itemText).join('\n'), ed('items'), { multi: true })));
-  if (n.type === 'table') f.push(fld('表格列（每行一个）', inp('columns', visItems(n, 'after', 'columns').map(itemText).join('\n'), ed('columns'), { multi: true })));
-  if (OVERLAY.has(n.type)) {
+  if (ITEMS_TYPES.has(bt(n.type))) f.push(fld('选项 / 条目（每行一个）', inp('items', visItems(n, 'after', 'items').map(itemText).join('\n'), ed('items'), { multi: true })));
+  if (bt(n.type) === 'progress' || bt(n.type) === 'slider') f.push(fld('当前值（0–100）', inp('value', n.value, ed('value'))));
+  if (bt(n.type) === 'table') f.push(fld('表格列（每行一个）', inp('columns', visItems(n, 'after', 'columns').map(itemText).join('\n'), ed('columns'), { multi: true })));
+  if (OVERLAY.has(bt(n.type))) {
     const vis = afterVisibleIds(p);
-    const cands = entries(p).filter((x) => vis.has(x.n.id) && TRIGGER_TYPES.has(x.n.type) && !contains(n, x.n)).map((x) => [x.n.id, nlabel(x.n) + ' #' + x.n.id]);
+    const cands = entries(p).filter((x) => vis.has(x.n.id) && TRIGGER_TYPES.has(bt(x.n.type)) && !contains(n, x.n)).map((x) => [x.n.id, nlabel(x.n) + ' #' + x.n.id]);
     const cur = trigList(n);
     const commit = ed('trigger');
     f.push(h('div', { class: 'fld' }, h('span', null, '由哪些元素触发（可多选）'), h('div', { class: 'trig-list' }, cands.length ? cands.map((c) => h('label', { class: 'trig-opt' },
@@ -1500,9 +1563,9 @@ function nodeEditor(p, n, e) {
     acts.append(btn('↑ 前移', () => mutate(() => opSibling(pid, id, -1)), null, '和前一个元素交换位置'), btn('↓ 后移', () => mutate(() => opSibling(pid, id, 1))), btn('复制', () => mutate(() => opDuplicate(pid, id))), btn('删除', () => mutate(() => opDelete(pid, id)), 'danger'));
   }
   const conv = h('div', { class: 'acts' });
-  if (e.list && e.list !== p.overlays && !OVERLAY.has(n.type)) {
+  if (e.list && e.list !== p.overlays && !OVERLAY.has(bt(n.type))) {
     conv.append(h('span', { class: 'hint', style: 'width:100%' }, '改成点击按钮才出现：'),
-      btn('转为弹窗', () => mutate(() => opConvert(pid, id, 'modal'))), btn('转为下拉菜单', () => mutate(() => opConvert(pid, id, 'menu')), null, '二级菜单：点按钮展开'),
+      btn('转为弹窗', () => mutate(() => opConvert(pid, id, 'dialog'))), btn('转为下拉菜单', () => mutate(() => opConvert(pid, id, 'menu')), null, '二级菜单：点按钮展开'),
       btn('转为抽屉', () => mutate(() => opConvert(pid, id, 'drawer'))), btn('转为气泡', () => mutate(() => opConvert(pid, id, 'popover'))));
   }
   let addRow = null;
@@ -1768,7 +1831,7 @@ window.smyw = {
     add: (pid, type, dest) => mutate(() => opAdd(pid, type, dest || {})),
     remove: (pid, id) => mutate(() => opDelete(pid, id)),
     restore: (pid, id) => mutate(() => opRestore(pid, id)),
-    convert: (pid, id, kind) => mutate(() => opConvert(pid, id, kind || 'modal')),
+    convert: (pid, id, kind) => mutate(() => opConvert(pid, id, kind || 'dialog')),
     sibling: (pid, id, dir) => mutate(() => opSibling(pid, id, dir)),
     edit: (pid, id, field, val) => editor(() => { const p = pageById(pid); const e = p && findNode(p, id); return e && e.n; }, field, { target: { kind: 'node', page: pid, id: id }, name: ref, prefix: () => pfx(pageById(pid)) })(val),
     stepMove: (fid, id, dir) => mutate(() => opStepMove(fid, id, dir)),

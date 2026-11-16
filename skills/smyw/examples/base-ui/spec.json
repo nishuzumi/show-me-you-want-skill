@@ -1,0 +1,333 @@
+{
+  "title": "团队设置：用 Base UI 组件拼装",
+  "summary": "把团队设置页按 Base UI 原语重排：Dialog 邀请成员、Menu 成员操作、Switch 通知开关、Tabs 分栏、Accordion 高级设置、Progress / Slider 展示状态、Field 表单。线框只表达结构，实现时用同一套 Base UI 组件和项目自己的样式。",
+  "stage": "prototype",
+  "version": 1,
+  "changes": [
+    { "area": "frontend", "change": "modified", "text": "团队设置页按 Base UI 组件重排：Dialog / Menu / Switch / Tabs / Accordion / Progress / Slider / Field" },
+    { "area": "frontend", "change": "added", "text": "新增「邀请成员」Dialog 和「成员操作」Menu" },
+    { "area": "api", "change": "added", "text": "邀请成员接口 POST /api/team/invites" }
+  ],
+  "questions": [
+    { "id": "q-role", "q": "邀请成员时默认角色用「成员」还是让管理员选？", "options": ["默认成员，可改", "必须选择"] }
+  ],
+  "pages": [
+    {
+      "id": "team-settings",
+      "name": "团队设置",
+      "route": "/settings/team",
+      "width": 1280,
+      "change": "modified",
+      "note": "团队设置从零散表单项改成按 Base UI 组件分组的设置页；重点是把「邀请成员」「成员操作」做成 Dialog / Menu。",
+      "root": {
+        "id": "team-root",
+        "type": "page",
+        "children": [
+          {
+            "id": "team-header",
+            "type": "header",
+            "component": "<Header> TeamHeader.tsx",
+            "change": "modified",
+            "before": { "label": "设置" },
+            "label": "团队设置",
+            "children": [
+              { "id": "team-title", "type": "heading", "label": "团队设置", "change": "added" },
+              {
+                "id": "invite",
+                "type": "button",
+                "component": "<Button> InviteButton.tsx",
+                "label": "邀请成员",
+                "variant": "primary",
+                "change": "added",
+                "fn": "onClick → openInviteDialog()",
+                "on": [{ "action": "open", "target": "invite-dialog" }]
+              },
+              {
+                "id": "notify-switch",
+                "type": "switch",
+                "component": "<Switch> NotifySwitch.tsx",
+                "label": "接收邀请邮件",
+                "change": "added",
+                "states": { "on": { "text": "已开启" } },
+                "on": [{ "action": "state", "target": "notify-switch" }]
+              },
+              {
+                "id": "compact-toggle",
+                "type": "toggle",
+                "component": "<Toggle> CompactToggle.tsx",
+                "label": "紧凑视图",
+                "change": "added",
+                "states": { "on": { "text": "已开启" } },
+                "on": [{ "action": "state", "target": "compact-toggle" }]
+              }
+            ]
+          },
+          {
+            "id": "team-tabs",
+            "type": "tabs",
+            "component": "<Tabs> TeamTabs.tsx",
+            "label": "",
+            "change": "added",
+            "children": [
+              {
+                "id": "team-tabs-list",
+                "type": "row",
+                "component": "<Tabs.List>",
+                "change": "added",
+                "children": [
+                  {
+                    "id": "tab-members",
+                    "type": "button",
+                    "component": "<Tabs.Tab>",
+                    "label": "成员",
+                    "variant": "ghost",
+                    "change": "added",
+                    "on": [
+                      { "action": "show", "target": "members" },
+                      { "action": "hide", "target": "roles" },
+                      { "action": "hide", "target": "billing" }
+                    ]
+                  },
+                  {
+                    "id": "tab-roles",
+                    "type": "button",
+                    "component": "<Tabs.Tab>",
+                    "label": "角色",
+                    "variant": "ghost",
+                    "change": "added",
+                    "on": [
+                      { "action": "show", "target": "roles" },
+                      { "action": "hide", "target": "members" },
+                      { "action": "hide", "target": "billing" }
+                    ]
+                  },
+                  {
+                    "id": "tab-billing",
+                    "type": "button",
+                    "component": "<Tabs.Tab>",
+                    "label": "账单",
+                    "variant": "ghost",
+                    "change": "added",
+                    "on": [
+                      { "action": "show", "target": "billing" },
+                      { "action": "hide", "target": "members" },
+                      { "action": "hide", "target": "roles" }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "members",
+                "type": "section",
+                "component": "<Tabs.Panel> MembersPanel.tsx",
+                "label": "成员",
+                "change": "added",
+                "children": [
+                  {
+                    "id": "member-table",
+                    "type": "table",
+                    "label": "团队成员",
+                    "change": "added",
+                    "columns": ["成员", "角色", "状态", ""],
+                    "rows": 3
+                  },
+                  {
+                    "id": "member-row-action",
+                    "type": "button",
+                    "label": "成员操作",
+                    "variant": "ghost",
+                    "change": "added",
+                    "on": [{ "action": "open", "target": "member-menu" }]
+                  }
+                ]
+              },
+              {
+                "id": "roles",
+                "type": "section",
+                "component": "<Tabs.Panel> RolesPanel.tsx",
+                "label": "角色",
+                "change": "added",
+                "hidden": true,
+                "children": [
+                  { "id": "roles-note", "type": "text", "label": "按角色配置成员权限", "change": "added" }
+                ]
+              },
+              {
+                "id": "billing",
+                "type": "section",
+                "component": "<Tabs.Panel> BillingPanel.tsx",
+                "label": "账单",
+                "change": "added",
+                "hidden": true,
+                "children": [
+                  { "id": "billing-note", "type": "text", "label": "当前套餐：团队版（5 个席位）", "change": "added" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "advanced",
+            "type": "accordion",
+            "component": "<Accordion> AdvancedSettings.tsx",
+            "label": "高级设置",
+            "change": "added",
+            "children": [
+              {
+                "id": "quota-trigger",
+                "type": "button",
+                "component": "<Accordion.Trigger>",
+                "label": "用量与配额",
+                "variant": "ghost",
+                "change": "added",
+                "on": [{ "action": "toggle", "target": "quota" }]
+              },
+              {
+                "id": "quota",
+                "type": "section",
+                "component": "<Accordion.Panel>",
+                "change": "added",
+                "hidden": true,
+                "children": [
+                  { "id": "quota-progress", "type": "progress", "label": "本月用量", "value": 72, "change": "added" },
+                  { "id": "quota-slider", "type": "slider", "label": "并发任务上限", "value": 45, "change": "added" }
+                ]
+              },
+              {
+                "id": "prefs-trigger",
+                "type": "button",
+                "component": "<Accordion.Trigger>",
+                "label": "通知偏好",
+                "variant": "ghost",
+                "change": "added",
+                "on": [{ "action": "toggle", "target": "prefs" }]
+              },
+              {
+                "id": "prefs",
+                "type": "fieldset",
+                "component": "<Accordion.Panel>",
+                "label": "摘要邮件",
+                "change": "added",
+                "hidden": true,
+                "children": [
+                  {
+                    "id": "prefs-field",
+                    "type": "field",
+                    "label": "发送频率",
+                    "change": "added",
+                    "children": [
+                      { "id": "prefs-select", "type": "select", "text": "每天", "items": ["每天", "每周", "从不"], "change": "added" }
+                    ]
+                  },
+                  { "id": "prefs-sep", "type": "separator", "change": "added" },
+                  { "id": "prefs-save", "type": "button", "label": "保存通知偏好", "change": "added" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "team-form",
+            "type": "form",
+            "component": "<Form> TeamProfileForm.tsx",
+            "label": "团队资料",
+            "change": "added",
+            "children": [
+              {
+                "id": "team-name-field",
+                "type": "field",
+                "label": "团队名称",
+                "change": "added",
+                "children": [
+                  { "id": "team-name", "type": "input", "text": "Nishu Studio", "change": "added" }
+                ]
+              },
+              { "id": "team-save", "type": "button", "label": "保存", "variant": "primary", "change": "added" }
+            ]
+          }
+        ]
+      },
+      "overlays": [
+        {
+          "id": "invite-dialog",
+          "type": "dialog",
+          "component": "<Dialog> InviteDialog.tsx",
+          "label": "邀请成员",
+          "trigger": "invite",
+          "change": "added",
+          "note": "用 Dialog.Root / Trigger / Portal / Popup 组合；邀请成功后用 Toast 反馈。",
+          "children": [
+            {
+              "id": "invite-email-field",
+              "type": "field",
+              "label": "邮箱",
+              "change": "added",
+              "children": [
+                { "id": "invite-email", "type": "input", "text": "name@example.com", "change": "added" }
+              ]
+            },
+            { "id": "invite-role", "type": "radio-group", "label": "角色", "items": ["管理员", "成员"], "change": "added" },
+            {
+              "id": "invite-send",
+              "type": "button",
+              "label": "发送邀请",
+              "variant": "primary",
+              "change": "added",
+              "fn": "onClick → POST /api/team/invites",
+              "on": [
+                { "action": "open", "target": "invite-toast" },
+                { "action": "close" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "member-menu",
+          "type": "menu",
+          "component": "<Menu> MemberActions.tsx",
+          "label": "成员操作",
+          "trigger": "member-row-action",
+          "change": "added",
+          "items": ["设为管理员", "移除成员"],
+          "children": []
+        },
+        {
+          "id": "invite-toast",
+          "type": "toast",
+          "component": "<Toast> InviteToast.tsx",
+          "label": "邀请已发送",
+          "trigger": "invite-send",
+          "change": "added",
+          "children": [
+            { "id": "invite-toast-text", "type": "text", "label": "已向 name@example.com 发送邀请", "change": "added" }
+          ]
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "id": "flow-invite",
+      "name": "邀请成员",
+      "change": "added",
+      "steps": [
+        { "id": "inv-1", "actor": "user", "text": "点击「邀请成员」", "node": "invite" },
+        { "id": "inv-2", "actor": "frontend", "text": "打开邀请 Dialog", "fn": "openInviteDialog()", "node": "invite-dialog", "change": "added" },
+        { "id": "inv-3", "actor": "user", "text": "填写邮箱和角色并提交", "node": ["invite-email", "invite-role"] },
+        { "id": "inv-4", "actor": "frontend", "text": "提交邀请", "fn": "POST /api/team/invites { email, role }", "node": "invite-send", "change": "added" },
+        { "id": "inv-5", "actor": "backend", "text": "创建邀请记录并发送邮件", "fn": "InviteService.create()" },
+        { "id": "inv-6", "actor": "frontend", "text": "显示 Toast 并关闭 Dialog", "fn": "toast('邀请已发送')", "node": "invite-toast", "change": "added" }
+      ]
+    }
+  ],
+  "backend": [
+    {
+      "id": "m-invite",
+      "name": "InviteService",
+      "kind": "service",
+      "change": "added",
+      "items": [
+        { "id": "be-invite-create", "kind": "function", "name": "create(input: { email, role }): Invite", "note": "校验邮箱、写邀请记录、发邮件" },
+        { "id": "be-invite-api", "kind": "api", "name": "POST /api/team/invites", "note": "管理员才能调用" }
+      ]
+    }
+  ]
+}

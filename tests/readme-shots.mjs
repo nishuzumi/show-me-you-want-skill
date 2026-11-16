@@ -11,7 +11,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const skill = join(root, 'skills', 'smyw');
 const out = join(root, 'docs', 'screenshots');
 mkdirSync(out, { recursive: true });
-for (const ex of ['helpdesk-ai', 'task-tags']) execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(skill, 'examples', ex, 'spec.json')], { stdio: 'ignore' });
+for (const ex of ['helpdesk-ai', 'task-tags', 'base-ui']) execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(skill, 'examples', ex, 'spec.json')], { stdio: 'ignore' });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const dport = 9400 + Math.floor(Math.random() * 400);
@@ -116,6 +116,18 @@ await open('helpdesk-ai');
 await shot('19-narrow-window');
 await ev('smyw.focusUnit("ai-suggest"); return 1'); await sleep(500);
 await shot('20-narrow-window-detail');
+
+console.log('base-ui');
+await size(1440, 900);
+await open('base-ui');
+await ev('smyw.ui.showComp = true; smyw.ui.sel = null; smyw.ui.unit = null; smyw.render(); return 1'); await sleep(500);
+await shot('26-base-ui');
+await ev('smyw.focusUnit("invite-dialog"); return 1'); await sleep(500);
+await shot('27-base-ui-detail');
+await ev('smyw.play.start("team-settings"); return 1'); await sleep(500);
+await ev('document.querySelector("#pl-frame [data-ia][data-id=invite]").click(); return 1'); await sleep(300);
+await shot('28-base-ui-play');
+await ev('smyw.play.stop(); return 1'); await sleep(300);
 
 console.log(errors.length ? 'PAGE ERRORS ' + JSON.stringify(errors) : 'no page errors');
 process.exit(errors.length ? 1 : 0);

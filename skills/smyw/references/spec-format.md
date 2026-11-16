@@ -46,7 +46,7 @@ spec 是一个 JSON 对象。只有 `title` 加上 `pages` / `flows` / `backend`
   "width": 1440,             // 画布上这一屏的宽度（像素），默认 1280
   "change": "modified", "note": "...",
   "root": Node,              // 一般是 { "id": "...", "type": "page", "children": [...] }
-  "overlays": [ Node ]       // 弹窗 / 抽屉 / 下拉菜单 / 气泡，各自用 trigger 指向打开它的元素 id
+  "overlays": [ Node ]       // 弹层：dialog / alert-dialog / drawer / popover / preview-card / tooltip / menu / context-menu / toast；各自用 trigger 指向打开它的元素 id（toast 可省略）
 }
 ~~~
 
@@ -68,19 +68,26 @@ spec 是一个 JSON 对象。只有 `title` 加上 `pages` / `flows` / `backend`
 | `layout` | `col`（纵向）/ `row`（横向）/ `grid`（配合 `cols`） |
 | `w` | 宽度：`"1/4"` `"1/3"` `"1/2"` `"2/3"` `"3/4"` `"full"`，或 flex 权重数字 |
 | `variant` | 按钮类：`primary` / `secondary` / `danger` / `ghost` / `icon` |
-| `items` | nav / tabs / list / select / radio / menu 的条目。条目可以是字符串，也可以是 `{"label": "...", "change": "added"}` |
+| `items` | nav / tabs / list / menu / select / combobox / autocomplete / radio-group / checkbox-group / accordion / menubar / navigation-menu / toggle-group 的条目。条目可以是字符串，也可以是 `{"label": "...", "change": "added"}` |
 | `columns` | table 的列，格式同 items（适合表达"新增一列、删掉一列"） |
 | `rows` | table 的占位行数，默认 2 |
 | `lines` | text 的灰色占位行数 |
 | `trigger` | overlay 节点：打开它的按钮 / 链接 id；多个按钮打开同一个弹层时写成数组，如 `["ai-edit", "reply-polish"]`。画布上会从每个按钮画一条弯曲连线到弹层 |
+| `value` | `progress` / `meter` / `slider` 的当前值，0–100，如 `72`；预览画成对应的条 |
 
 **type 取值**
 
-- 容器：`page` `section` `row` `col` `grid` `card` `form` `list` `item` `nav` `tabs` `header` `footer` `sidebar` `toolbar` `panel` `group`（`row` `nav` `toolbar` `header` `footer` `item` 默认横向排列）
-- 浮层（放在 `overlays` 里）：`modal` `drawer` `menu`（下拉菜单/二级菜单）`popover`
-- 控件：`button` `link` `input` `textarea` `select` `checkbox` `radio` `toggle` `upload`
-- 展示：`heading` `text` `image` `table` `chart` `stat` `badge` `tag` `icon` `divider`
+smyw 用 **Base UI** 作为组件框架。`type` 优先写 Base UI 的原语（完整映射、每个组件的 anatomy 见 [`base-ui.md`](base-ui.md)）：
+
+- 弹层：`dialog` `alert-dialog` `drawer` `popover` `preview-card` `tooltip` `menu` `context-menu` `toast`
+- 表单 / 控件：`button` `input` `textarea` `field` `fieldset` `form` `checkbox` `checkbox-group` `switch` `radio-group` `select` `combobox` `autocomplete` `number-field` `otp-field` `slider` `toggle` `toggle-group` `upload`
+- 容器 / 导航：`tabs` `accordion` `collapsible` `toolbar` `menubar` `navigation-menu` `scroll-area` `section` `row` `col` `grid` `card` `list` `item` `nav` `header` `footer` `sidebar` `panel` `group` `page`
+- 展示：`avatar` `progress` `meter` `separator` `heading` `text` `image` `table` `chart` `stat` `badge` `tag` `icon` `link`
+- 旧类型（继续可用，但新方案优先用对应的 Base UI 类型）：`modal` → `dialog`，`radio` → `radio-group`，`divider` → `separator`
+- `toggle` 与 `switch` 不同：`toggle` 是 Base UI 的 Toggle（可按下的按钮），开 / 关设置用 `switch`；旧方案里用 `toggle` 表示开关的，迁移到 `switch`
 - `placeholder`：带斜纹的虚线框。只用于「这里将来会有内容」之类的占位；**没改动的模块不要用它**，画成真实模块、不展开 children 即可（显示「内容不变，未展开」）
+
+`row` `nav` `toolbar` `header` `footer` `item` `menubar` `navigation-menu` `toggle-group` 默认横向排列。
 
 ## 交互（on / hidden / states）
 
@@ -97,7 +104,7 @@ action：
 
 | action | 效果 | target |
 |---|---|---|
-| `open` | 打开弹层（modal 居中变暗、drawer 右侧滑出、menu / popover 贴着按钮）；target 是普通元素时等于 show | 必填 |
+| `open` | 打开弹层（dialog / modal 居中变暗、drawer 右侧滑出、menu / popover 贴着按钮）；target 是普通元素时等于 show | 必填 |
 | `close` | 关闭弹层 | 可省略，默认关闭自己所在的弹层 |
 | `navigate` | 跳到另一个 page | page id |
 | `toggle` | 展开 / 收起（hidden 元素或弹层） | 必填 |
@@ -114,6 +121,28 @@ action：
   "states": { "done": { "label": "已验收", "variant": "ghost" } },
   "on": [{ "action": "state", "target": "ac-btn", "state": "done" }] }
 ```
+
+## Base UI 组件
+
+smyw 的组件框架是 **Base UI**（`@base-ui/react`，v1.9.0）。spec 的 `type` 就是 Base UI 原语的名字；`component` 写实现时要写的 Base UI 组件，例如：
+
+```jsonc
+{ "id": "invite", "type": "button", "label": "邀请成员", "component": "<Button> InviteButton.tsx",
+  "change": "added", "on": [{ "action": "open", "target": "invite-dialog" }] },
+{ "id": "invite-dialog", "type": "dialog", "label": "邀请成员", "trigger": "invite", "change": "added",
+  "children": [ /* Dialog.Title / Dialog.Description / Field.Root… */ ] }
+```
+
+写 spec 时按 Base UI 的 part 来拆节点：
+
+- 弹层（`dialog` / `alert-dialog` / `drawer` / `popover` / `preview-card` / `tooltip` / `menu` / `context-menu` / `toast`）放在 `page.overlays`，`trigger` 指向触发按钮；`toast` 可以没有 trigger。
+- `accordion` / `collapsible` 的面板用 `hidden: true`，触发按钮用 `on: [{ "action": "toggle", "target": "<面板 id>" }]`。
+- `tabs` 的面板也用 `hidden: true`；每个 tab 的触发按钮用 `show` 自己的面板 + `hide` 其它面板，如 `[{ "action": "show", "target": "members" }, { "action": "hide", "target": "roles" }]`。
+- `switch` / `checkbox` / `toggle` / 按钮的选中态用 `states` + `on: [{ "action": "state", … }]`。
+- `select` / `combobox` / `autocomplete` / `menu` / `radio-group` / `checkbox-group` / `accordion` 的选项用 `items`。
+- `progress` / `meter` / `slider` 用 `value`（0–100）。
+
+每个组件的 import、parts 和组合示例见 [`base-ui.md`](base-ui.md)。预览只画结构，不打包 React / Base UI；实现时按同一套组件写真正的 Base UI 代码。
 
 ## Flow
 

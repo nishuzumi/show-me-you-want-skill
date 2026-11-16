@@ -13,21 +13,23 @@ smyw 是一个给编码 Agent（Claude Code、DeepSeek Harness 等支持 `SKILL.
 
 线框只表达「有哪些模块、放在哪、怎么触发」，**不是视觉稿**，实现时以项目自己的设计规范为准。
 
+组件框架是 **Base UI**（`@base-ui/react`）：spec 里的每个模块都是 Base UI 的一个组件（`Dialog`、`Switch`、`Tabs`、`Select`、`Accordion`…），Agent 按组件来拼，实现时直接写同一套 Base UI 代码。预览仍然是零依赖的单文件线框，不打包 React / Base UI。
+
 ![画布总览](docs/screenshots/01-overview.png)
 
 ## 工作方式
 
 ```
 你提需求
-  → Agent 读代码，写 .smyw/<日期>-<名称>/spec.json
+  → Agent 读代码，按 Base UI 组件写 .smyw/<日期>-<名称>/spec.json
   → scripts/build.mjs 校验并生成 preview.html（纯前端单文件，离线可开）
   → 你打开 preview.html：看改动、拖动、改结构、批注、回答 Agent 的问题
   → 「反馈」页点「复制反馈」，粘贴回对话
   → Agent 用 scripts/apply-feedback.mjs 生成下一版 spec，重新 build
-  → 你点「确认方案」后，Agent 才开始写代码
+  → 你点「确认方案」后，Agent 才开始写代码（用 Base UI 拼）
 ```
 
-不需要服务端，也没有任何依赖，构建只需要 Node ≥ 18。
+预览不需要服务端，也没有任何依赖，构建只需要 Node ≥ 18。实现阶段才用 Base UI 和项目自己的样式。
 
 ## 安装
 
@@ -49,8 +51,9 @@ cp -r skills/smyw <你的项目>/.claude/skills/smyw
 
 ## 先体验一下
 
-仓库里带了两个已经生成好的示例，下载后用浏览器直接打开就能玩：
+仓库里带了几个已经生成好的示例，下载后用浏览器直接打开就能玩：
 
+- [`skills/smyw/examples/base-ui/preview.html`](skills/smyw/examples/base-ui/preview.html)：用 Base UI 组件拼的团队设置页（Dialog / Menu / Switch / Toggle / Tabs / Accordion / Progress / Slider）
 - [`skills/smyw/examples/helpdesk-ai/preview.html`](skills/smyw/examples/helpdesk-ai/preview.html)：一整屏的例子（客服工作台加 AI 建议回复）
 - [`skills/smyw/examples/task-tags/preview.html`](skills/smyw/examples/task-tags/preview.html)：多页面的例子（整页新增 / 整页删除）
 
@@ -59,6 +62,24 @@ cp -r skills/smyw <你的项目>/.claude/skills/smyw
 ```bash
 node skills/smyw/scripts/build.mjs skills/smyw/examples/helpdesk-ai/spec.json
 ```
+
+## 组件框架：Base UI
+
+spec 里的 `type` 直接写 Base UI 的原语，Agent 按组件来拼：
+
+- 弹层：`dialog` / `alert-dialog` / `drawer` / `popover` / `preview-card` / `tooltip` / `menu` / `context-menu` / `toast`；
+- 控件：`button` / `input` / `field` / `form` / `select` / `combobox` / `autocomplete` / `switch` / `toggle` / `toggle-group` / `checkbox` / `radio-group` / `slider` / `number-field` / `otp-field`；
+- 容器：`tabs` / `accordion` / `collapsible` / `toolbar` / `menubar` / `navigation-menu` / `scroll-area`；
+- 展示：`avatar` / `progress` / `meter` / `separator`。
+
+`toggle` 是可按下的 Toggle 按钮（适合工具栏），`switch` 是开 / 关开关；两者不是同一个组件。
+
+预览会把这些组件画成线框，并在右侧详情里给出对应的 `import { Dialog } from '@base-ui/react/dialog'`、一句话说明和需要组合的 parts。实现时 Agent 用同一套 Base UI 组件 + 项目自己的 CSS，不需要把线框的 div 照搬过去。完整映射和每个组件的 anatomy 见 [`skills/smyw/references/base-ui.md`](skills/smyw/references/base-ui.md)。
+
+预览本身仍然是**零依赖单文件**，不打包 React / Base UI；Base UI 只出现在 spec 的组件身份和实现阶段。
+
+![Base UI 组件详情](docs/screenshots/27-base-ui-detail.png)
+
 
 ## 功能导览
 
@@ -239,18 +260,19 @@ node skills/smyw/scripts/build.mjs .smyw/<dir>/spec.json
 
 ```json
 {
-  "id": "reply", "type": "form", "label": "回复客户", "component": "<ReplyBox>",
+  "id": "reply", "type": "fieldset", "label": "回复客户", "component": "<Fieldset> ReplyBox.tsx",
   "change": "modified", "before": { "label": "回复" },
   "children": [
     { "id": "reply-quick", "type": "select", "text": "快捷回复", "change": "removed" },
     { "id": "reply-polish", "type": "button", "label": "AI 润色", "change": "added",
       "fn": "openDraftDrawer({ mode: \"polish\" })",
-      "on": [{ "action": "open", "target": "ai-drawer" }] }
+      "on": [{ "action": "open", "target": "ai-drawer" }] },
+    { "id": "reply-switch", "type": "switch", "label": "自动发送", "change": "added" }
   ]
 }
 ```
 
-完整字段见 [`skills/smyw/references/spec-format.md`](skills/smyw/references/spec-format.md)，Agent 的使用说明见 [`skills/smyw/SKILL.md`](skills/smyw/SKILL.md)。`build.mjs` 会检查常见问题，比如 id 重复、modified 没写 before、用「（不变）」占位代替真实模块、弹层没写 trigger。
+完整字段见 [`skills/smyw/references/spec-format.md`](skills/smyw/references/spec-format.md)，Base UI 组件映射见 [`skills/smyw/references/base-ui.md`](skills/smyw/references/base-ui.md)，Agent 的使用说明见 [`skills/smyw/SKILL.md`](skills/smyw/SKILL.md)。`build.mjs` 会检查常见问题，比如 id 重复、modified 没写 before、用「（不变）」占位代替真实模块、弹层没写 trigger。
 
 ## 目录
 
@@ -258,10 +280,12 @@ node skills/smyw/scripts/build.mjs .smyw/<dir>/spec.json
 skills/smyw/                  skill 本体（复制或链接这个目录即可）
   SKILL.md                    给 Agent 的使用说明
   references/spec-format.md   spec 和反馈格式
+  references/base-ui.md       Base UI 组件映射与组合规则
   scripts/build.mjs           spec.json → preview.html
   scripts/apply-feedback.mjs  从粘贴回来的反馈生成下一版 spec
+  assets/base-ui.json         Base UI 组件元数据（类型、import、parts）
   assets/                     运行时、样式、模板
-  examples/                   helpdesk-ai（一整屏）、task-tags（多页面）
+  examples/                   base-ui（团队设置）、helpdesk-ai（一整屏）、task-tags（多页面）
 tests/
   e2e.mjs                     无头 Chrome 端到端测试
   readme-shots.mjs            重新生成 README 截图

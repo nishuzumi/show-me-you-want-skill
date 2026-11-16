@@ -20,6 +20,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 cpSync(join(skill, 'examples', 'task-tags', 'spec.json'), join(work, 'spec.json'));
 execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(work, 'spec.json')], { stdio: 'inherit' });
 execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(skill, 'examples', 'helpdesk-ai', 'spec.json')], { stdio: 'ignore' });
+execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(skill, 'examples', 'base-ui', 'spec.json')], { stdio: 'ignore' });
 execFileSync('mkdir', ['-p', shots]);
 
 const dport = 9300 + Math.floor(Math.random() * 500);
@@ -96,9 +97,9 @@ await ev('smyw.setTab("canvas"); return true');
 
 console.log('edit on the canvas');
 await ev('smyw.setMode("edit"); return true');
-await ev('smyw.op.convert("task-list", "task-form-card", "modal"); return true');
+await ev('smyw.op.convert("task-list", "task-form-card", "dialog"); return true');
 const conv = await ev(FIND + 'const ov = P.overlays[P.overlays.length-1]; const main = find(P.root, "main"); const btn = find(P.root, ov.trigger); return { ovType: ov.type, ghost: !!find(P.root, "task-form-card"), btnChange: btn && btn.change, btnIndex: main.children.indexOf(btn), inner: ov.children.map(c => c.type), drawn: !!document.querySelector(".cv-ov .t-modal") }');
-check('proposed inline card → modal opened by a new button at the same spot', conv.ovType === 'modal' && !conv.ghost && conv.btnChange === 'added' && conv.btnIndex === 1 && conv.inner.join() === 'input,select,row' && conv.drawn, conv);
+check('proposed inline card → Dialog opened by a new button at the same spot', conv.ovType === 'dialog' && !conv.ghost && conv.btnChange === 'added' && conv.btnIndex === 1 && conv.inner.join() === 'input,select,row' && conv.drawn, conv);
 await ev('smyw.op.convert("task-list", "toolbar", "menu"); return true');
 const conv2 = await ev(FIND + 'const g = find(P.root, "toolbar"); const ov = P.overlays[P.overlays.length-1]; return { ghost: g.change, movedTo: g.movedTo, from: ov.movedFrom || (ov.children[0] && ov.children[0].movedFrom) }');
 check('converting an EXISTING element leaves a red "移出" ghost', conv2.ghost === 'removed' && conv2.from === 'toolbar' && !!conv2.movedTo, conv2);
@@ -163,8 +164,8 @@ check('a patch made on an older version is refused', /v1/.test(staleErr) && /v2/
 console.log('round trip: v2 → build → render');
 execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(work, 'spec.json')], { stdio: 'ignore' });
 await open(join(work, 'preview.html'));
-const v2 = await ev('return { ver: smyw.state.spec.version, modal: !!document.querySelector(".cv-ov .t-modal"), inlineGone: !document.querySelector("#cv-world [data-id=task-form-card]"), ghost: !!document.querySelector("#cv-world [data-id=search][data-side=before].mk-removed"), trig: !!document.querySelector("#cv-world .is-trigger") }');
-check('v2 renders the user-edited structure (modal + trigger + moved-out ghost)', v2.ver === 2 && v2.modal && v2.inlineGone && v2.ghost && v2.trig, v2);
+const v2 = await ev('return { ver: smyw.state.spec.version, dialog: !!document.querySelector(".cv-ov [data-bui=dialog]"), inlineGone: !document.querySelector("#cv-world [data-id=task-form-card]"), ghost: !!document.querySelector("#cv-world [data-id=search][data-side=before].mk-removed"), trig: !!document.querySelector("#cv-world .is-trigger") }');
+check('v2 renders the user-edited structure (Dialog + trigger + moved-out ghost)', v2.ver === 2 && v2.dialog && v2.inlineGone && v2.ghost && v2.trig, v2);
 await ev('const t = document.querySelector("#cv-world .is-trigger"); t.click(); return true'); await sleep(300);
 check('selecting a trigger lists its interactions and offers to try it in play mode', await ev('return [...document.querySelectorAll("#inspector .dt-list li")].some(li => li.textContent.includes("打开")) && [...document.querySelectorAll("#inspector button")].some(b => b.textContent.includes("在演示里点一下"))'));
 await shot('06-v2');
@@ -208,7 +209,70 @@ const sub = await ev('return !!document.querySelector(".pl-ov [data-id=as-3-sub]
 check('a dropdown opens anchored under its button (no dim) and its sub-menu expands in place', mn && mn.below && !mn.dim && sub, { mn, sub });
 await ev('smyw.state.comments = []; smyw.play.stop(); return 1');
 await ev('smyw.focusUnit("reply"); return true'); await sleep(600);
+const fbi = await ev('return [...document.querySelectorAll("#inspector .bui-import")].map(x => x.textContent)');
+check('form detail shows both Form and Field imports', fbi.some((t) => t.includes("@base-ui/react/form")) && fbi.some((t) => t.includes("@base-ui/react/field")), fbi);
 await shot('07-helpdesk-unit');
+
+console.log('base-ui example (Base UI primitives)');
+await open(join(skill, 'examples', 'base-ui', 'preview.html'));
+await ev('localStorage.clear(); return true');
+const bu = await ev('return { buiScript: !!document.getElementById("smyw-bui"), dialogs: document.querySelectorAll("#cv-world [data-bui=dialog]").length, switchNode: !!document.querySelector("#cv-world [data-bui=switch]"), toast: !!document.querySelector("#cv-world [data-bui=toast]"), tabLabels: [...document.querySelectorAll("#cv-world [data-id=team-tabs-list] .wf-lbl")].map(x => x.textContent) }');
+check('base-ui example renders Dialog / Switch / Toast primitives', bu.buiScript && bu.dialogs === 1 && bu.switchNode && bu.toast && bu.tabLabels.includes('成员'), bu);
+await ev('smyw.focusUnit("invite-dialog"); return 1'); await sleep(500);
+const dbi = await ev('const b = document.querySelector("#inspector .bui"); return b ? { text: b.textContent, importOk: b.textContent.includes("@base-ui/react/dialog"), parts: b.textContent.includes("Root · Trigger") } : null');
+check('Base UI detail shows the Dialog import and anatomy', !!dbi && dbi.importOk && dbi.parts, dbi);
+await ev('smyw.ui.sel = { kind: "node", page: "team-settings", id: "notify-switch", side: "after" }; smyw.render(); return 1'); await sleep(300);
+const sbi = await ev('return [...document.querySelectorAll("#inspector .bui")].map(x => x.textContent).join(" | ")');
+check('switch detail maps to Base UI Switch', /Base UI · Switch/.test(sbi) && /@base-ui\/react\/switch/.test(sbi), sbi);
+await ev('smyw.ui.sel = { kind: "node", page: "team-settings", id: "compact-toggle", side: "after" }; smyw.render(); return 1'); await sleep(300);
+const tbi = await ev('return [...document.querySelectorAll("#inspector .bui")].map(x => x.textContent).join(" | ")');
+check('toggle detail maps to Base UI Toggle, not Switch', /Base UI · Toggle/.test(tbi) && /@base-ui\/react\/toggle/.test(tbi) && !/@base-ui\/react\/switch/.test(tbi), tbi);
+const swt = await ev('return { sw: !!document.querySelector("#cv-world [data-id=notify-switch] .wf-toggle"), tb: !!document.querySelector("#cv-world [data-id=compact-toggle] .wf-toggle-btn") }');
+check('Switch renders as a switch and Toggle as a toggle button', swt.sw && swt.tb, swt);
+await ev('smyw.ui.sel = { kind: "node", page: "team-settings", id: "invite-role", side: "after" }; smyw.render(); return 1'); await sleep(300);
+const rbi = await ev('return [...document.querySelectorAll("#inspector .bui-import")].map(x => x.textContent)');
+check('radio-group detail shows both RadioGroup and Radio imports', rbi.some((t) => t.includes("@base-ui/react/radio-group")) && rbi.some((t) => t.includes("@base-ui/react/radio")), rbi);
+const exF = await ev('return { team: document.querySelector("#cv-world [data-id=team-name-field]").textContent, invite: document.querySelector("#cv-world [data-id=invite-email-field]").textContent, fieldset: !!document.querySelector("#cv-world [data-bui=fieldset]") }');
+const countText = (s, w) => s.split(w).length - 1;
+check('field example labels each field once and groups with Fieldset', countText(exF.team, '团队名称') === 1 && countText(exF.invite, '邮箱') === 1 && exF.fieldset, exF);
+const exA = await ev('return { q: !!document.querySelector("#cv-world [data-id=quota-trigger]"), p: !!document.querySelector("#cv-world [data-id=prefs-trigger]"), qov: !!document.querySelector("#cv-world .cv-rev[data-ov=quota]"), pov: !!document.querySelector("#cv-world .cv-rev[data-ov=prefs]") }');
+check('accordion example uses trigger buttons and hidden panels', exA.q && exA.p && exA.qov && exA.pov, exA);
+await ev('smyw.play.start("team-settings"); return 1'); await sleep(300);
+const sw0 = await ev('return { st: smyw.play.state.st["notify-switch"] ?? null, sub: (document.querySelector("#pl-frame [data-id=notify-switch] .wf-sub") || {}).textContent || "" }');
+await ev('document.querySelector("#pl-frame [data-ia][data-id=notify-switch]").click(); return 1'); await sleep(200);
+const sw1 = await ev('return { st: smyw.play.state.st["notify-switch"] ?? null, sub: (document.querySelector("#pl-frame [data-id=notify-switch] .wf-sub") || {}).textContent || "" }');
+await ev('document.querySelector("#pl-frame [data-ia][data-id=notify-switch]").click(); return 1'); await sleep(200);
+const sw2 = await ev('return { st: smyw.play.state.st["notify-switch"] ?? null, sub: (document.querySelector("#pl-frame [data-id=notify-switch] .wf-sub") || {}).textContent || "" }');
+check('switch toggles on and back off in play mode', sw0.st == null && !sw0.sub && sw1.st === 'on' && /已开启/.test(sw1.sub) && sw2.st == null && !sw2.sub, { sw0, sw1, sw2 });
+const tg0 = await ev('return { st: smyw.play.state.st["compact-toggle"] ?? null, sub: (document.querySelector("#pl-frame [data-id=compact-toggle] .wf-sub") || {}).textContent || "" }');
+await ev('document.querySelector("#pl-frame [data-ia][data-id=compact-toggle]").click(); return 1'); await sleep(200);
+const tg1 = await ev('return { st: smyw.play.state.st["compact-toggle"] ?? null, sub: (document.querySelector("#pl-frame [data-id=compact-toggle] .wf-sub") || {}).textContent || "" }');
+await ev('document.querySelector("#pl-frame [data-ia][data-id=compact-toggle]").click(); return 1'); await sleep(200);
+const tg2 = await ev('return { st: smyw.play.state.st["compact-toggle"] ?? null, sub: (document.querySelector("#pl-frame [data-id=compact-toggle] .wf-sub") || {}).textContent || "" }');
+check('toggle toggles on and back off in play mode', tg0.st == null && !tg0.sub && tg1.st === 'on' && /已开启/.test(tg1.sub) && tg2.st == null && !tg2.sub, { tg0, tg1, tg2 });
+const tab0 = await ev('return { m: !!document.querySelector("#pl-frame [data-id=members]"), r: !!document.querySelector("#pl-frame [data-id=roles]"), b: !!document.querySelector("#pl-frame [data-id=billing]") }');
+await ev('document.querySelector("#pl-frame [data-ia][data-id=tab-roles]").click(); return 1'); await sleep(200);
+const tab1 = await ev('return { m: !!document.querySelector("#pl-frame [data-id=members]"), r: !!document.querySelector("#pl-frame [data-id=roles]"), b: !!document.querySelector("#pl-frame [data-id=billing]") }');
+await ev('document.querySelector("#pl-frame [data-ia][data-id=tab-billing]").click(); return 1'); await sleep(200);
+const tab2 = await ev('return { m: !!document.querySelector("#pl-frame [data-id=members]"), r: !!document.querySelector("#pl-frame [data-id=roles]"), b: !!document.querySelector("#pl-frame [data-id=billing]") }');
+check('play mode switches tabs through hidden panels', tab0.m && !tab0.r && !tab0.b && !tab1.m && tab1.r && !tab1.b && !tab2.m && !tab2.r && tab2.b, { tab0, tab1, tab2 });
+const ac0 = await ev('return { q: !!document.querySelector("#pl-frame [data-id=quota]"), p: !!document.querySelector("#pl-frame [data-id=prefs]") }');
+await ev('document.querySelector("#pl-frame [data-ia][data-id=quota-trigger]").click(); return 1'); await sleep(200);
+const ac1 = await ev('return { q: !!document.querySelector("#pl-frame [data-id=quota]"), p: !!document.querySelector("#pl-frame [data-id=prefs]") }');
+await ev('document.querySelector("#pl-frame [data-ia][data-id=quota-trigger]").click(); return 1'); await sleep(200);
+const ac2 = await ev('return { q: !!document.querySelector("#pl-frame [data-id=quota]"), p: !!document.querySelector("#pl-frame [data-id=prefs]") }');
+await ev('document.querySelector("#pl-frame [data-ia][data-id=prefs-trigger]").click(); return 1'); await sleep(200);
+const ac3 = await ev('return { q: !!document.querySelector("#pl-frame [data-id=quota]"), p: !!document.querySelector("#pl-frame [data-id=prefs]") }');
+check('play mode expands and collapses accordion panels', !ac0.q && !ac0.p && ac1.q && !ac1.p && !ac2.q && !ac2.p && !ac3.q && ac3.p, { ac0, ac1, ac2, ac3 });
+await ev('smyw.play.stop(); smyw.play.start("team-settings"); return 1'); await sleep(300);
+await ev('document.querySelector("#pl-frame [data-ia][data-id=invite]").click(); return 1'); await sleep(300);
+const bplay = await ev('return { open: !!document.querySelector(".pl-back-modal [data-bui=dialog]"), dim: !!document.querySelector(".pl-back-modal.dim") }');
+check('play mode opens the Base UI Dialog over a dimmed screen', bplay.open && bplay.dim, bplay);
+await shot('09b-base-ui');
+await ev('smyw.play.stop(); return 1');
+await ev('smyw.state.spec.pages[0].root.children.push({ id: "proto-node", type: "__proto__", label: "未知组件", change: "added" }); smyw.ui.sel = { kind: "node", page: "team-settings", id: "proto-node", side: "after" }; smyw.ui.unit = null; smyw.render(); return 1');
+const proto = await ev('return { rendered: !!document.querySelector("#cv-world [data-id=proto-node]"), bui: !!document.querySelector("#inspector .bui"), buiText: (document.querySelector("#inspector .bui") || {}).textContent || "", head: (document.querySelector("#inspector .ins-head") || {}).textContent || "", tab: smyw.ui.tab, sel: smyw.ui.sel }');
+check('unknown component type falls back without crashing', proto.rendered && !proto.bui, proto);
 
 console.log('DSH-style sandboxed iframe');
 const probe = '<script>window.addEventListener("error", (e) => parent.postMessage({ err: String(e.message) }, "*"));' +
@@ -217,7 +281,7 @@ const probe = '<script>window.addEventListener("error", (e) => parent.postMessag
   'm.setMode("edit"); m.op.convert("task-list", "task-form-card", "menu"); r.ops = m.state.ops.length;' +
   'const rb = [...document.querySelectorAll("button")].find((b) => b.textContent === "重置"); rb.click(); r.resetAsk = [...document.querySelectorAll("button")].some((b) => b.textContent === "再点一次确认重置"); r.opsAfterFirstClick = m.state.ops.length;' +
   '[...document.querySelectorAll("button")].find((b) => b.textContent === "再点一次确认重置").click(); r.opsAfterReset = m.state.ops.length;' +
-  'm.op.convert("task-list", "task-form-card", "modal"); const ok = await m.copyFeedback(); const out = document.getElementById("smyw-out");' +
+  'm.op.convert("task-list", "task-form-card", "dialog"); const ok = await m.copyFeedback(); const out = document.getElementById("smyw-out");' +
   'r.copy = ok; r.selectedAll = !!out && out.selectionStart === 0 && out.selectionEnd === out.value.length && out.value.includes("smyw-patch"); parent.postMessage(r, "*"); }' +
   'catch (e) { parent.postMessage({ err: e.message }, "*"); } }, 900);<\/script>';
 const sandboxed = readFileSync(join(skill, 'examples', 'task-tags', 'preview.html'), 'utf8').replace('</body>', probe + '</body>');
