@@ -49,7 +49,7 @@ whenToUse: 用户提出新功能、改版或重构，且会新增/删除/修改�
 
 **组件框架：Base UI。** 界面用 Base UI 的原语来拼，不要用抽象方框代替真实组件：
 - `type` 写 Base UI 组件名：`dialog` / `alert-dialog` / `drawer` / `popover` / `preview-card` / `tooltip` / `menu` / `context-menu` / `toast` / `switch` / `checkbox` / `checkbox-group` / `radio-group` / `select` / `combobox` / `autocomplete` / `input` / `field` / `fieldset` / `form` / `number-field` / `otp-field` / `slider` / `progress` / `meter` / `tabs` / `accordion` / `collapsible` / `toolbar` / `menubar` / `navigation-menu` / `toggle` / `toggle-group` / `avatar` / `separator` / `button`。旧类型 `modal` / `radio` / `divider` 也还能用，但新方案优先用对应的 Base UI 类型；`toggle` 不是开关的旧名，它是 Base UI 的 Toggle 按钮（开/关设置请用 `switch`）。
-- 弹层用 `trigger` 指向打开它的按钮；展开 / 收起用 `hidden` + `on: toggle`；选中态用 `states` + `on: state`。预览的「▶ 演示」能真的点。具体切分见 `references/base-ui.md`。
+- 弹层用 `trigger` 指向打开它的按钮；展开 / 收起用 `hidden` + `on: toggle`，Tabs 切换用 `hidden` + `on: show/hide`；选中态用 `states` + `on: state`。预览的「▶ 演示」能真的点。具体切分见 `references/base-ui.md`。
 - `component` 写实现时要写的 Base UI 组件（如 `"<Dialog> InviteDialog.tsx"`），用户靠它把线框和代码对上。
 - **不要写样式**：Base UI 是 headless 的，颜色/间距/字体由项目决定；线框也不表达视觉。
 

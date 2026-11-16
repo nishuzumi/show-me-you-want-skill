@@ -89,10 +89,11 @@ Base UI 的组件是“根 + 若干 part”。在 spec 里，**根**写成一个
 规则：
 
 - **弹层**（`dialog` / `alert-dialog` / `drawer` / `popover` / `preview-card` / `tooltip` / `menu` / `context-menu` / `toast`）放在 `page.overlays`，用 `trigger` 指向打开它的按钮 id；多个按钮打开同一个弹层就写数组。`toast` 可以没有 trigger。
-- **展开 / 收起**（`accordion` / `collapsible` / `tabs` / `menu` 的子菜单）：用 `hidden: true` 标出默认不显示的面板，再用触发按钮的 `on: [{ "action": "toggle", "target": "<面板 id>" }]` 指向它。预览会把面板画在旁边的单独面板并连线。
+- **展开 / 收起**（`accordion` / `collapsible` / `menu` 的子菜单）：用 `hidden: true` 标出默认不显示的面板，再用触发按钮的 `on: [{ "action": "toggle", "target": "<面板 id>" }]` 指向它。预览会把面板画在旁边的单独面板并连线。
+- **切换 Tabs**：面板用 `hidden: true`；每个 tab 的触发按钮用 `show` 自己的面板 + `hide` 其它面板，如 `[{ "action": "show", "target": "members" }, { "action": "hide", "target": "roles" }]`。这样演示模式里能真的切换标签页。
 - **状态**（`toggle` / `switch` / `checkbox` / 按钮的选中态）：用 `states` 写几种样子，`on: [{ "action": "state", "target": "<id>", "state": "<状态名>" }]` 切换；演示模式里可以真的点。
 - **表单**：`form` 里放 `field`，`field` 里放 `input` / `select` / `combobox` 等；`field` 的 `label` 就是字段名。不要用「输入框（不变）」占位。
-- **列表型组件**（`tabs` / `select` / `menu` / `accordion` / `radio-group` / `checkbox-group`）用 `items` 写条目；`items` 也可以是带 `change` 的对象。
+- **列表型组件**（`select` / `menu` / `radio-group` / `checkbox-group`）用 `items` 写条目，条目也可以是带 `change` 的对象；`tabs` / `accordion` 需要点击切换时，用触发按钮 + `hidden` 面板（见上），`items` 只放静态标签。
 - **进度 / 数值**：`progress` / `meter` / `slider` 写 `"value": 0–100`，预览会画成对应的条。
 - **组件名**：`component` 写实现时真正要写的 Base UI 组件（如 `"<Dialog> InviteDialog.tsx"`），这样用户能把线框和代码对上。
 

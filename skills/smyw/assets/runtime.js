@@ -19,8 +19,9 @@ const BUI = (() => {
 const BUI_C = BUI.components || {};
 const BASE_TYPE = {};
 Object.keys(BUI_C).forEach((k) => { BASE_TYPE[k] = BUI_C[k].base || k; });
-function bt(t) { return BASE_TYPE[t] || t; }
-function buiInfo(t) { return BUI_C[t] || BUI_C[bt(t)] || null; }
+function own(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+function bt(t) { return own(BASE_TYPE, t) ? BASE_TYPE[t] : t; }
+function buiInfo(t) { if (own(BUI_C, t)) return BUI_C[t]; const b = bt(t); return b !== t && own(BUI_C, b) ? BUI_C[b] : null; }
 
 const TYPE_LABEL = {
   page: '页面', section: '区块', row: '横排', col: '竖排', grid: '网格', card: '卡片', form: '表单',
@@ -234,7 +235,7 @@ function insertAt(tgt, node, pos) {
 }
 
 // ------------------------------------------------------------------ labels
-function tname(t) { return TYPE_LABEL[t] || t || '元素'; }
+function tname(t) { return own(TYPE_LABEL, t) ? TYPE_LABEL[t] : (t || '元素'); }
 function nlabel(n) { const s = short(n.label || n.text || (Array.isArray(n.items) && n.items.length ? itemText(n.items[0]) : '') || n.fn || '', 20); return tname(n.type) + (s ? '「' + s + '」' : ''); }
 function ref(n) { return nlabel(n) + ' #' + n.id; }
 function pageName(p) { return (p && p.name) || (p && p.id) || ''; }
@@ -358,14 +359,15 @@ function opDuplicate(pid, id) {
   selectNode(pid, c.id);
   return { type: 'duplicate', page: pid, node: c.id, origin: id, desc: pfx(p) + '复制' + ref(e.n) + ' 为 #' + c.id };
 }
-/* Inline element -> overlay (modal / drawer / menu / popover) opened by a new button at the old spot. */
+/* Inline element -> overlay (dialog / drawer / menu / popover) opened by a new button at the old spot. */
 function opConvert(pid, id, kind) {
   const p = pageById(pid); const e = p && findNode(p, id); if (!e || !e.list || e.list === p.overlays) return false;
   const label = e.n.label || tname(e.n.type);
   const name = ref(e.n);
+  const kindName = kind === 'dialog' ? '弹窗' : tname(kind);
   const map = {};
   const content = afterClone(e.n, map);
-  const b = { id: newId(), type: 'button', label: kind === 'menu' ? label + ' ▾' : label, change: 'added', fn: 'onClick → 打开' + tname(kind) + '「' + short(label, 16) + '」' };
+  const b = { id: newId(), type: 'button', label: kind === 'menu' ? label + ' ▾' : label, change: 'added', fn: 'onClick → 打开' + kindName + '「' + short(label, 16) + '」' };
   const ov = { id: newId(), type: kind, label: label, change: 'added', trigger: b.id, children: [content] };
   // A card/section/form becomes the overlay itself (no "modal > card" double frame).
   const unwrap = ['card', 'section', 'form', 'panel', 'group', 'col'].indexOf(e.n.type) >= 0;
@@ -383,7 +385,7 @@ function opConvert(pid, id, kind) {
   remapTriggers(p, map);
   p.overlays.push(ov);
   selectNode(pid, b.id);
-  return { type: 'convert', page: pid, node: id, kind: kind, overlay: ov.id, trigger: b.id, desc: pfx(p) + '把' + name + '改成' + tname(kind) + ' #' + ov.id + '，原位置放一个按钮「' + b.label + '」#' + b.id + ' 点击后打开（按钮可再拖到别处）' };
+  return { type: 'convert', page: pid, node: id, kind: kind, overlay: ov.id, trigger: b.id, desc: pfx(p) + '把' + name + '改成' + kindName + ' #' + ov.id + '，原位置放一个按钮「' + b.label + '」#' + b.id + ' 点击后打开（按钮可再拖到别处）' };
 }
 function opAddPage() {
   const p = { id: newId(), name: '新页面', route: '', change: 'added', root: { id: newId(), type: 'page', change: 'added', children: [] }, overlays: [] };
@@ -640,7 +642,7 @@ function renderWF(n, p, o) {
   }
   const unit = o.unit || unitHere;
   const cls = ['wf', 't-' + t, cont ? 'is-c lay-' + layout : 'is-leaf', INLINE.has(t) ? 'inline' : '', v.variant ? 'v-' + v.variant : '', trig ? 'is-trigger' : '', mark, (unit || o.whole) ? 'in-chg' : '', n.hidden && o.ctx !== 'play' ? 'wf-cond' : ''].filter(Boolean).join(' ');
-  const el = h('div', { class: cls, 'data-kind': 'node', 'data-id': n.id, 'data-side': eff, 'data-unit': unit, 'data-partner': n.movedFrom || n.movedTo || null, 'data-bui': BUI_C[vt] ? vt : null, title: o.ctx === 'canvas' ? (n.note || null) : null });
+  const el = h('div', { class: cls, 'data-kind': 'node', 'data-id': n.id, 'data-side': eff, 'data-unit': unit, 'data-partner': n.movedFrom || n.movedTo || null, 'data-bui': own(BUI_C, vt) ? vt : null, title: o.ctx === 'canvas' ? (n.note || null) : null });
   if (o.ctx === 'play' && trig) { el.setAttribute('data-ia', '1'); el.setAttribute('data-pg', p.id); }
   applyWidth(el, v.w, o.parentLayout);
   if (layout === 'grid') el.style.setProperty('--cols', String(v.cols || 2));
@@ -1563,7 +1565,7 @@ function nodeEditor(p, n, e) {
   const conv = h('div', { class: 'acts' });
   if (e.list && e.list !== p.overlays && !OVERLAY.has(bt(n.type))) {
     conv.append(h('span', { class: 'hint', style: 'width:100%' }, '改成点击按钮才出现：'),
-      btn('转为弹窗', () => mutate(() => opConvert(pid, id, 'modal'))), btn('转为下拉菜单', () => mutate(() => opConvert(pid, id, 'menu')), null, '二级菜单：点按钮展开'),
+      btn('转为弹窗', () => mutate(() => opConvert(pid, id, 'dialog'))), btn('转为下拉菜单', () => mutate(() => opConvert(pid, id, 'menu')), null, '二级菜单：点按钮展开'),
       btn('转为抽屉', () => mutate(() => opConvert(pid, id, 'drawer'))), btn('转为气泡', () => mutate(() => opConvert(pid, id, 'popover'))));
   }
   let addRow = null;
@@ -1829,7 +1831,7 @@ window.smyw = {
     add: (pid, type, dest) => mutate(() => opAdd(pid, type, dest || {})),
     remove: (pid, id) => mutate(() => opDelete(pid, id)),
     restore: (pid, id) => mutate(() => opRestore(pid, id)),
-    convert: (pid, id, kind) => mutate(() => opConvert(pid, id, kind || 'modal')),
+    convert: (pid, id, kind) => mutate(() => opConvert(pid, id, kind || 'dialog')),
     sibling: (pid, id, dir) => mutate(() => opSibling(pid, id, dir)),
     edit: (pid, id, field, val) => editor(() => { const p = pageById(pid); const e = p && findNode(p, id); return e && e.n; }, field, { target: { kind: 'node', page: pid, id: id }, name: ref, prefix: () => pfx(pageById(pid)) })(val),
     stepMove: (fid, id, dir) => mutate(() => opStepMove(fid, id, dir)),

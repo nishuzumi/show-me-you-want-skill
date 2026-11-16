@@ -136,7 +136,8 @@ smyw 的组件框架是 **Base UI**（`@base-ui/react`，v1.9.0）。spec 的 `t
 写 spec 时按 Base UI 的 part 来拆节点：
 
 - 弹层（`dialog` / `alert-dialog` / `drawer` / `popover` / `preview-card` / `tooltip` / `menu` / `context-menu` / `toast`）放在 `page.overlays`，`trigger` 指向触发按钮；`toast` 可以没有 trigger。
-- `accordion` / `collapsible` / `tabs` 的面板用 `hidden: true`，触发按钮用 `on: [{ "action": "toggle", "target": "<面板 id>" }]`。
+- `accordion` / `collapsible` 的面板用 `hidden: true`，触发按钮用 `on: [{ "action": "toggle", "target": "<面板 id>" }]`。
+- `tabs` 的面板也用 `hidden: true`；每个 tab 的触发按钮用 `show` 自己的面板 + `hide` 其它面板，如 `[{ "action": "show", "target": "members" }, { "action": "hide", "target": "roles" }]`。
 - `switch` / `checkbox` / `toggle` / 按钮的选中态用 `states` + `on: [{ "action": "state", … }]`。
 - `select` / `combobox` / `autocomplete` / `menu` / `radio-group` / `checkbox-group` / `accordion` 的选项用 `items`。
 - `progress` / `meter` / `slider` 用 `value`（0–100）。

@@ -48,8 +48,8 @@
                 "component": "<Switch> NotifySwitch.tsx",
                 "label": "接收邀请邮件",
                 "change": "added",
-                "states": { "on": { "label": "接收邀请邮件" } },
-                "on": [{ "action": "state", "target": "notify-switch", "state": "on" }]
+                "states": { "on": { "text": "已开启" } },
+                "on": [{ "action": "state", "target": "notify-switch" }]
               },
               {
                 "id": "compact-toggle",
@@ -57,8 +57,8 @@
                 "component": "<Toggle> CompactToggle.tsx",
                 "label": "紧凑视图",
                 "change": "added",
-                "states": { "on": { "label": "紧凑视图" } },
-                "on": [{ "action": "state", "target": "compact-toggle", "state": "on" }]
+                "states": { "on": { "text": "已开启" } },
+                "on": [{ "action": "state", "target": "compact-toggle" }]
               }
             ]
           },
@@ -68,12 +68,58 @@
             "component": "<Tabs> TeamTabs.tsx",
             "label": "",
             "change": "added",
-            "items": ["成员", "角色", "账单"],
             "children": [
+              {
+                "id": "team-tabs-list",
+                "type": "row",
+                "component": "<Tabs.List>",
+                "change": "added",
+                "children": [
+                  {
+                    "id": "tab-members",
+                    "type": "button",
+                    "component": "<Tabs.Tab>",
+                    "label": "成员",
+                    "variant": "ghost",
+                    "change": "added",
+                    "on": [
+                      { "action": "show", "target": "members" },
+                      { "action": "hide", "target": "roles" },
+                      { "action": "hide", "target": "billing" }
+                    ]
+                  },
+                  {
+                    "id": "tab-roles",
+                    "type": "button",
+                    "component": "<Tabs.Tab>",
+                    "label": "角色",
+                    "variant": "ghost",
+                    "change": "added",
+                    "on": [
+                      { "action": "show", "target": "roles" },
+                      { "action": "hide", "target": "members" },
+                      { "action": "hide", "target": "billing" }
+                    ]
+                  },
+                  {
+                    "id": "tab-billing",
+                    "type": "button",
+                    "component": "<Tabs.Tab>",
+                    "label": "账单",
+                    "variant": "ghost",
+                    "change": "added",
+                    "on": [
+                      { "action": "show", "target": "billing" },
+                      { "action": "hide", "target": "members" },
+                      { "action": "hide", "target": "roles" }
+                    ]
+                  }
+                ]
+              },
               {
                 "id": "members",
                 "type": "section",
-                "component": "<MembersPanel> MembersPanel.tsx",
+                "component": "<Tabs.Panel> MembersPanel.tsx",
                 "label": "成员",
                 "change": "added",
                 "children": [
@@ -94,6 +140,28 @@
                     "on": [{ "action": "open", "target": "member-menu" }]
                   }
                 ]
+              },
+              {
+                "id": "roles",
+                "type": "section",
+                "component": "<Tabs.Panel> RolesPanel.tsx",
+                "label": "角色",
+                "change": "added",
+                "hidden": true,
+                "children": [
+                  { "id": "roles-note", "type": "text", "label": "按角色配置成员权限", "change": "added" }
+                ]
+              },
+              {
+                "id": "billing",
+                "type": "section",
+                "component": "<Tabs.Panel> BillingPanel.tsx",
+                "label": "账单",
+                "change": "added",
+                "hidden": true,
+                "children": [
+                  { "id": "billing-note", "type": "text", "label": "当前套餐：团队版（5 个席位）", "change": "added" }
+                ]
               }
             ]
           },
@@ -103,22 +171,43 @@
             "component": "<Accordion> AdvancedSettings.tsx",
             "label": "高级设置",
             "change": "added",
-            "items": ["用量与配额", "通知偏好"],
             "children": [
+              {
+                "id": "quota-trigger",
+                "type": "button",
+                "component": "<Accordion.Trigger>",
+                "label": "用量与配额",
+                "variant": "ghost",
+                "change": "added",
+                "on": [{ "action": "toggle", "target": "quota" }]
+              },
               {
                 "id": "quota",
                 "type": "section",
+                "component": "<Accordion.Panel>",
                 "change": "added",
+                "hidden": true,
                 "children": [
                   { "id": "quota-progress", "type": "progress", "label": "本月用量", "value": 72, "change": "added" },
                   { "id": "quota-slider", "type": "slider", "label": "并发任务上限", "value": 45, "change": "added" }
                 ]
               },
               {
+                "id": "prefs-trigger",
+                "type": "button",
+                "component": "<Accordion.Trigger>",
+                "label": "通知偏好",
+                "variant": "ghost",
+                "change": "added",
+                "on": [{ "action": "toggle", "target": "prefs" }]
+              },
+              {
                 "id": "prefs",
                 "type": "fieldset",
+                "component": "<Accordion.Panel>",
                 "label": "摘要邮件",
                 "change": "added",
+                "hidden": true,
                 "children": [
                   {
                     "id": "prefs-field",
