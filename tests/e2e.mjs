@@ -20,6 +20,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 cpSync(join(skill, 'examples', 'task-tags', 'spec.json'), join(work, 'spec.json'));
 execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(work, 'spec.json')], { stdio: 'inherit' });
 execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(skill, 'examples', 'helpdesk-ai', 'spec.json')], { stdio: 'ignore' });
+execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(skill, 'examples', 'base-ui', 'spec.json')], { stdio: 'ignore' });
 execFileSync('mkdir', ['-p', shots]);
 
 const dport = 9300 + Math.floor(Math.random() * 500);
@@ -209,6 +210,24 @@ check('a dropdown opens anchored under its button (no dim) and its sub-menu expa
 await ev('smyw.state.comments = []; smyw.play.stop(); return 1');
 await ev('smyw.focusUnit("reply"); return true'); await sleep(600);
 await shot('07-helpdesk-unit');
+
+console.log('base-ui example (Base UI primitives)');
+await open(join(skill, 'examples', 'base-ui', 'preview.html'));
+await ev('localStorage.clear(); return true');
+const bu = await ev('return { buiScript: !!document.getElementById("smyw-bui"), dialogs: document.querySelectorAll("#cv-world [data-bui=dialog]").length, switchNode: !!document.querySelector("#cv-world [data-bui=switch]"), toast: !!document.querySelector("#cv-world [data-bui=toast]"), tabLabels: [...document.querySelectorAll("#cv-world .t-tabs .wf-it")].map(x => x.textContent) }');
+check('base-ui example renders Dialog / Switch / Toast primitives', bu.buiScript && bu.dialogs === 1 && bu.switchNode && bu.toast && bu.tabLabels.includes('成员'), bu);
+await ev('smyw.focusUnit("invite-dialog"); return 1'); await sleep(500);
+const dbi = await ev('const b = document.querySelector("#inspector .bui"); return b ? { text: b.textContent, importOk: b.textContent.includes("@base-ui/react/dialog"), parts: b.textContent.includes("Root · Trigger") } : null');
+check('Base UI detail shows the Dialog import and anatomy', !!dbi && dbi.importOk && dbi.parts, dbi);
+await ev('smyw.ui.sel = { kind: "node", page: "team-settings", id: "notify-switch", side: "after" }; smyw.render(); return 1'); await sleep(300);
+const sbi = await ev('return [...document.querySelectorAll("#inspector .bui")].map(x => x.textContent).join(" | ")');
+check('switch detail maps to Base UI Switch', /Base UI · Switch/.test(sbi) && /@base-ui\/react\/switch/.test(sbi), sbi);
+await ev('smyw.play.start("team-settings"); return 1'); await sleep(300);
+await ev('document.querySelector("#pl-frame [data-ia][data-id=invite]").click(); return 1'); await sleep(300);
+const bplay = await ev('return { open: !!document.querySelector(".pl-back-modal [data-bui=dialog]"), dim: !!document.querySelector(".pl-back-modal.dim") }');
+check('play mode opens the Base UI Dialog over a dimmed screen', bplay.open && bplay.dim, bplay);
+await shot('09b-base-ui');
+await ev('smyw.play.stop(); return 1');
 
 console.log('DSH-style sandboxed iframe');
 const probe = '<script>window.addEventListener("error", (e) => parent.postMessage({ err: String(e.message) }, "*"));' +

@@ -136,6 +136,19 @@ code{font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .wf-media{height:64px;border-radius:4px;background:#eef0f3;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--faint);font-size:12px}
 .wf-media.chart{height:80px}
 .wf-stat{font-size:20px;font-weight:700;color:#4a4f57}
+.wf-avatar{width:40px;height:40px;border-radius:50%;background:#e9ebef;color:#5b6170;display:flex;align-items:center;justify-content:center;font-weight:650;font-size:13px;letter-spacing:.04em}
+.wf.t-avatar{border:none;background:none;padding:0}
+.wf-progress-row{display:flex;align-items:center;gap:8px;margin-top:2px}
+.wf-progress{flex:1;position:relative;height:10px;border-radius:5px;background:#eef0f3;overflow:hidden}
+.wf-progress i{display:block;height:100%;border-radius:5px;background:#8d93a0}
+.wf-progress-v{font-size:10px;color:var(--muted);min-width:30px;text-align:right}
+.wf-slider{position:relative;height:6px;border-radius:3px;background:#eef0f3;margin:12px 0 2px}
+.wf-slider i{display:block;height:100%;border-radius:3px;background:#8d93a0}
+.wf-slider b{position:absolute;top:50%;width:14px;height:14px;border-radius:50%;background:#fff;border:1.5px solid #8d93a0;transform:translate(-50%,-50%)}
+.wf-slider span{position:absolute;right:0;top:-18px;font-size:10px;color:var(--muted)}
+.bui-import{display:block;font:10.5px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#5b4b8a;background:#f5f2fb;border-radius:3px;padding:2px 5px;margin-top:3px;word-break:break-all}
+.bui-parts{font-size:10.5px;color:var(--muted);line-height:1.55;margin-top:3px}
+.dt-block.bui{border-left:3px solid #8e4ec6;padding-left:8px}
 .wf-table{display:grid;border:1px solid var(--line2);border-radius:4px;overflow:visible}
 .wf-table .th{font-size:11.5px;font-weight:600;background:#f3f4f6;padding:3px 6px;border-bottom:1px solid var(--line2);position:relative}
 .wf-table .td{height:20px;border-bottom:1px solid #f0f1f3;position:relative}
@@ -474,6 +487,7 @@ input,select,textarea{border:1px solid #777}
 </head>
 <body>
 <div id="app"><div style="padding:40px;color:#666;line-height:1.8">正在加载变更预览…<br>如果一直停在这里，说明当前预览环境没有运行页面脚本：<br>· 在 DSH 里：到设置中打开「显示代码工作视图」后重新打开这个文件；<br>· 或者用 Chrome / Edge / Firefox 等浏览器直接打开这个 .html 文件。</div></div>
+<script type="application/json" id="smyw-bui">{"framework":"base-ui","version":"1.9.0","package":"@base-ui/react","docs":"https://base-ui.com/react/components","components":{"accordion":{"name":"Accordion","pkg":"accordion","summary":"A set of collapsible panels with headings.","parts":["Root","Item","Header","Trigger","Panel"],"base":"list","container":true,"items":true},"alert-dialog":{"name":"AlertDialog","pkg":"alert-dialog","summary":"A dialog that requires a user response to proceed.","parts":["Root","Trigger","Portal","Backdrop","Viewport","Popup","Title","Description","Close"],"base":"modal","container":true,"overlay":true},"autocomplete":{"name":"Autocomplete","pkg":"autocomplete","summary":"An input that suggests options as you type.","parts":["Root","InputGroup","Input","Portal","Positioner","Popup","List","Item"],"base":"select","items":true,"text":true},"avatar":{"name":"Avatar","pkg":"avatar","summary":"An easily stylable avatar.","parts":["Root","Image","Fallback"],"base":"avatar"},"button":{"name":"Button","pkg":"button","summary":"A button with consistent keyboard and accessibility behavior.","parts":["Button"],"base":"button","inline":true},"checkbox":{"name":"Checkbox","pkg":"checkbox","summary":"An easily stylable checkbox.","parts":["Root","Indicator"],"base":"checkbox","inline":true},"checkbox-group":{"name":"CheckboxGroup","pkg":"checkbox-group","summary":"Provides shared state to a series of checkboxes.","parts":["CheckboxGroup","Checkbox.Root","Checkbox.Indicator"],"base":"group","container":true,"items":true},"collapsible":{"name":"Collapsible","pkg":"collapsible","summary":"A collapsible panel controlled by a button.","parts":["Root","Trigger","Panel"],"base":"section","container":true},"combobox":{"name":"Combobox","pkg":"combobox","summary":"An input combined with a list of predefined items to select.","parts":["Root","InputGroup","Input","Portal","Positioner","Popup","List","Item"],"base":"select","items":true,"text":true},"context-menu":{"name":"ContextMenu","pkg":"context-menu","summary":"A menu that appears at the pointer on right click or long press.","parts":["Root","Trigger","Portal","Positioner","Popup","Item","Separator","SubmenuRoot"],"base":"menu","container":true,"overlay":true,"items":true},"dialog":{"name":"Dialog","pkg":"dialog","summary":"A popup that opens on top of the entire page.","parts":["Root","Trigger","Portal","Backdrop","Viewport","Popup","Title","Description","Close"],"base":"modal","container":true,"overlay":true},"drawer":{"name":"Drawer","pkg":"drawer","summary":"A panel that slides in from the edge of the screen.","parts":["Provider","Indent","Root","Trigger","Portal","Backdrop","Viewport","Popup","Content","Title","Description","Close"],"base":"drawer","container":true,"overlay":true},"field":{"name":"Field","pkg":"field","summary":"Labeling and validation for a form control.","parts":["Root","Label","Control","Description","Item","Error","Validity"],"base":"form","container":true},"fieldset":{"name":"Fieldset","pkg":"fieldset","summary":"A native fieldset with an easily stylable legend.","parts":["Root","Legend"],"base":"group","container":true},"form":{"name":"Form","pkg":"form","summary":"A native form element with consolidated error handling.","parts":["Form","Field.Root","Field.Label","Field.Control","Field.Error"],"base":"form","container":true},"input":{"name":"Input","pkg":"input","summary":"A native input with consistent styling hooks.","parts":["Input"],"base":"input","text":true},"menu":{"name":"Menu","pkg":"menu","summary":"A list of actions in a dropdown, with keyboard navigation.","parts":["Root","Trigger","Portal","Positioner","Popup","Item","Separator","Group","SubmenuRoot","SubmenuTrigger"],"base":"menu","container":true,"overlay":true,"items":true},"menubar":{"name":"Menubar","pkg":"menubar","summary":"A menu bar providing commands and options for your application.","parts":["Menubar","Menu.Root","Menu.Trigger","Menu.Popup","Menu.Item"],"base":"toolbar","container":true,"row":true,"items":true},"meter":{"name":"Meter","pkg":"meter","summary":"A graphical display of a numeric value within a range.","parts":["Root","Label","Track","Indicator","Value"],"base":"progress"},"navigation-menu":{"name":"NavigationMenu","pkg":"navigation-menu","summary":"A collection of links and menus for website navigation.","parts":["Root","List","Item","Trigger","Content","Link","Portal","Popup","Viewport"],"base":"nav","container":true,"row":true,"items":true},"number-field":{"name":"NumberField","pkg":"number-field","summary":"A numeric input with increment and decrement buttons.","parts":["Root","Group","Decrement","Input","Increment"],"base":"input","text":true},"otp-field":{"name":"OTPField","pkg":"otp-field","summary":"A one-time password input composed of individual character slots.","parts":["Root","Input","Separator"],"base":"input","text":true},"popover":{"name":"Popover","pkg":"popover","summary":"An accessible popup anchored to a button.","parts":["Root","Trigger","Portal","Backdrop","Positioner","Popup","Arrow","Viewport","Title","Description","Close"],"base":"popover","container":true,"overlay":true},"preview-card":{"name":"PreviewCard","pkg":"preview-card","summary":"A card that appears while hovering a link or trigger.","parts":["Root","Trigger","Portal","Backdrop","Positioner","Popup","Arrow","Viewport"],"base":"popover","container":true,"overlay":true},"progress":{"name":"Progress","pkg":"progress","summary":"Displays the status of a task that takes a long time.","parts":["Root","Label","Track","Indicator","Value"],"base":"progress"},"radio":{"name":"RadioGroup","pkg":"radio-group","summary":"Provides shared state to a series of radio buttons.","parts":["RadioGroup","Radio.Root","Radio.Indicator"],"base":"radio","items":true},"radio-group":{"name":"RadioGroup","pkg":"radio-group","summary":"Provides shared state to a series of radio buttons.","parts":["RadioGroup","Radio.Root","Radio.Indicator"],"base":"radio","items":true},"scroll-area":{"name":"ScrollArea","pkg":"scroll-area","summary":"A native scroll container with custom scrollbars.","parts":["Root","Viewport","Content","Scrollbar","Thumb","Corner"],"base":"panel","container":true},"select":{"name":"Select","pkg":"select","summary":"Choose a predefined value in a dropdown menu.","parts":["Root","Label","Trigger","Value","Icon","Portal","Positioner","Popup","List","Item"],"base":"select","items":true,"text":true},"separator":{"name":"Separator","pkg":"separator","summary":"A separator accessible to screen readers.","parts":["Separator"],"base":"divider"},"slider":{"name":"Slider","pkg":"slider","summary":"An easily stylable range input.","parts":["Root","Label","Value","Control","Track","Indicator","Thumb"],"base":"slider"},"switch":{"name":"Switch","pkg":"switch","summary":"A control that indicates whether a setting is on or off.","parts":["Root","Thumb"],"base":"toggle","inline":true},"tabs":{"name":"Tabs","pkg":"tabs","summary":"Toggles between related panels on the same page.","parts":["Root","List","Tab","Indicator","Panel"],"base":"tabs","container":true,"items":true},"toast":{"name":"Toast","pkg":"toast","summary":"Generates toast notifications.","parts":["Provider","Portal","Viewport","Root","Content","Title","Description","Action","Close"],"base":"popover","container":true,"overlay":true,"optionalTrigger":true},"toggle":{"name":"Toggle","pkg":"toggle","summary":"A two-state button that can be on or off.","parts":["Toggle"],"base":"toggle","inline":true},"toggle-group":{"name":"ToggleGroup","pkg":"toggle-group","summary":"Provides shared state to a series of toggle buttons.","parts":["ToggleGroup","Toggle"],"base":"toolbar","container":true,"row":true,"items":true},"toolbar":{"name":"Toolbar","pkg":"toolbar","summary":"A container for grouping buttons and controls.","parts":["Root","Button","Link","Separator","Group","Input"],"base":"toolbar","container":true,"row":true},"tooltip":{"name":"Tooltip","pkg":"tooltip","summary":"A short message that appears on hover or focus.","parts":["Provider","Root","Trigger","Portal","Positioner","Popup","Arrow","Viewport"],"base":"popover","container":true,"overlay":true},"modal":{"name":"Dialog","pkg":"dialog","summary":"A popup that opens on top of the entire page.","parts":["Root","Trigger","Portal","Backdrop","Viewport","Popup","Title","Description","Close"],"base":"modal","container":true,"overlay":true,"legacy":true},"divider":{"name":"Separator","pkg":"separator","summary":"A separator accessible to screen readers.","parts":["Separator"],"base":"divider","legacy":true}}}</script>
 <script type="application/json" id="smyw-spec">{"title":"任务管理：用「标签」替代「分类」","summary":"给任务增加多标签能力，替代原来的单一「分类」。\n列表页：工具栏增加标签筛选，表格「分类」列换成「标签」列，「新建任务」改为在页内展开表单卡片；新增「标签管理」页；删除「分类管理」页。\n后端：新增 TagService 与 /api/tags 接口，任务接口改为接收 tags。","stage":"prototype","version":1,"changes":[{"area":"frontend","change":"modified","text":"任务列表页：工具栏新增标签筛选；表格「分类」列 → 「标签」列；新建任务改为页内卡片"},{"area":"frontend","change":"added","text":"新增「标签管理」页面（增删改标签、设置颜色）"},{"area":"frontend","change":"removed","text":"删除「分类管理」页面，侧边栏入口同步移除"},{"area":"api","change":"added","text":"新增 /api/tags 增删改查接口"},{"area":"data","change":"modified","text":"Task 模型：categoryId → tags（多对多，task_tags 关联表）"}],"questions":[{"id":"q-color","q":"标签需要支持自定义颜色吗？","options":["需要","不需要，统一灰色"]},{"id":"q-migrate","q":"旧的「分类」数据怎么处理？","options":["自动转换成同名标签","直接丢弃"]}],"pages":[{"id":"task-list","name":"任务列表","route":"/tasks","note":"改动集中在工具栏、表单和表格","root":{"id":"task-list-root","type":"page","children":[{"id":"header","type":"header","children":[{"id":"logo","type":"heading","label":"TaskBoard"},{"id":"user-menu","type":"button","label":"用户 ▾","variant":"ghost"}],"component":"\u003cAppHeader> AppHeader.vue"},{"id":"body","type":"row","children":[{"id":"side-nav","type":"sidebar","label":"侧边栏","w":"1/4","children":[{"id":"nav-tasks","type":"link","label":"任务"},{"id":"nav-category","type":"link","label":"分类管理","change":"removed","note":"随「分类管理」页一起删除"},{"id":"nav-tags","type":"link","label":"标签管理","change":"added","fn":"navigate('/tags')"}],"component":"\u003cSideNav> SideNav.vue"},{"id":"main","type":"section","label":"任务列表","children":[{"id":"toolbar","type":"toolbar","children":[{"id":"search","type":"input","text":"搜索任务…","w":"1/3"},{"id":"filter-category","type":"select","text":"全部分类","change":"removed"},{"id":"filter-tags","type":"select","text":"按标签筛选（多选）","change":"added","fn":"onChange → setTagFilter(ids)"},{"id":"btn-new","type":"button","label":"新建任务","variant":"primary","fn":"onClick → openCreate()","change":"modified","before":{"fn":"onClick → navigate('/tasks/new')"},"note":"不再跳转到新页面"}],"component":"\u003cTaskToolbar>"},{"id":"task-form-card","type":"card","label":"新建 / 编辑任务","change":"added","note":"方案：常驻在工具栏下方的内联卡片","children":[{"id":"f-title","type":"input","label":"标题","text":"任务标题"},{"id":"f-tags","type":"select","label":"标签","text":"选择或新建标签","fn":"TagPicker → GET /api/tags"},{"id":"f-actions","type":"row","children":[{"id":"f-save","type":"button","label":"保存","variant":"primary","fn":"POST /api/tasks"},{"id":"f-cancel","type":"button","label":"取消","fn":"closeCreate()"}]}],"component":"\u003cTaskForm>（新）"},{"id":"task-table","type":"table","columns":["标题",{"label":"分类","change":"removed"},{"label":"标签","change":"added"},"截止日期","操作"],"fn":"GET /api/tasks?tags=…","change":"modified","before":{"fn":"GET /api/tasks?categoryId=…"},"component":"\u003cTaskTable>"},{"id":"pager","type":"row","label":"分页","component":"\u003cPagination>"}],"component":"\u003cTaskListPage> pages/tasks/index.vue"}]}]}},{"id":"tag-admin","name":"标签管理","route":"/tags","change":"added","root":{"id":"tag-admin-root","type":"page","children":[{"id":"tag-head","type":"row","children":[{"id":"tag-title","type":"heading","label":"标签管理"},{"id":"tag-add","type":"button","label":"新建标签","variant":"primary","fn":"onClick → openTagModal()"}],"component":"\u003cPageHeader>"},{"id":"tag-table","type":"table","columns":["颜色","名称","任务数","操作"],"fn":"GET /api/tags","component":"\u003cTagTable>（新）"}]},"overlays":[{"id":"tag-modal","type":"modal","label":"新建 / 编辑标签","trigger":"tag-add","children":[{"id":"tm-name","type":"input","label":"名称"},{"id":"tm-color","type":"select","label":"颜色","items":["灰","红","绿","蓝"]},{"id":"tm-save","type":"button","label":"保存","variant":"primary","fn":"POST /api/tags | PUT /api/tags/:id"}],"component":"\u003cTagEditModal>（新）"}]},{"id":"category-admin","name":"分类管理","route":"/categories","change":"removed","note":"功能被标签取代","root":{"id":"cat-root","type":"page","children":[{"id":"cat-title","type":"heading","label":"分类管理"},{"id":"cat-list","type":"list","items":["工作","生活","学习"],"component":"\u003cCategoryList>"},{"id":"cat-add","type":"button","label":"添加分类","fn":"POST /api/categories"}]}}],"flows":[{"id":"flow-create","name":"创建任务","steps":[{"id":"c1","actor":"user","text":"点击「新建任务」","page":"task-list","node":"btn-new"},{"id":"c2","actor":"frontend","text":"跳转到新建页 /tasks/new","change":"removed"},{"id":"c2b","actor":"frontend","text":"在列表上方展开新建卡片","fn":"openCreate()","change":"added","node":"task-form-card"},{"id":"c3","actor":"user","text":"填写标题，选择标签（可多选）","change":"modified","before":{"text":"填写标题，选择一个分类"},"node":"task-form-card"},{"id":"c4","actor":"frontend","text":"提交表单","fn":"POST /api/tasks {title, tags}","change":"modified","before":{"fn":"POST /api/tasks {title, categoryId}"},"node":"f-save"},{"id":"c5","actor":"backend","text":"校验并保存任务","fn":"TaskService.create(dto)"},{"id":"c5b","actor":"backend","text":"关联标签，不存在则创建","fn":"TagService.ensure(names)","change":"added"},{"id":"c6","actor":"db","text":"写入 tasks + task_tags","change":"modified","before":{"text":"写入 tasks"}},{"id":"c7","actor":"frontend","text":"刷新列表并收起卡片","fn":"reloadTasks()","change":"modified","before":{"text":"返回列表页并刷新"},"node":"task-table"}]},{"id":"flow-filter","name":"按标签筛选","change":"added","steps":[{"id":"t1","actor":"user","text":"在工具栏选择一个或多个标签","page":"task-list","node":"filter-tags"},{"id":"t2","actor":"frontend","text":"更新 URL 查询参数并请求","fn":"setTagFilter(ids)"},{"id":"t3","actor":"backend","text":"按标签过滤任务","fn":"GET /api/tasks?tags=1,2 → TaskRepo.findByTags()"},{"id":"t4","actor":"frontend","text":"渲染过滤结果","node":"task-table"}]}],"backend":[{"id":"m-task-ctl","name":"TaskController","kind":"controller","items":[{"id":"api-list","kind":"api","name":"GET /api/tasks","note":"查询参数 tags=1,2","change":"modified","before":{"note":"查询参数 categoryId"}},{"id":"api-create","kind":"api","name":"POST /api/tasks","note":"body: { title, tags[] }","change":"modified","before":{"note":"body: { title, categoryId }"}}]},{"id":"m-tag","name":"TagService","kind":"service","change":"added","items":[{"id":"tag-ensure","kind":"function","name":"ensure(names: string[]): Tag[]"},{"id":"tag-crud","kind":"api","name":"GET / POST / PUT / DELETE /api/tags"}]},{"id":"m-category","name":"CategoryService","kind":"service","change":"removed","note":"被 TagService 取代","items":[{"id":"cat-crud","kind":"api","name":"GET / POST /api/categories"}]},{"id":"m-task-model","name":"Task","kind":"model","items":[{"id":"fld-title","kind":"field","name":"title: string"},{"id":"fld-cat","kind":"field","name":"categoryId: number","change":"removed"},{"id":"fld-tags","kind":"field","name":"tags: Tag[]（多对多 task_tags）","change":"added"},{"id":"mig","kind":"job","name":"migration: 分类 → 同名标签","change":"added","note":"取决于问题「旧分类数据怎么处理」的回答"}]}]}</script>
 <script>/* smyw runtime.
  * Renders a change spec as before/after wireframes, flow swimlanes and backend modules,
@@ -487,6 +501,18 @@ const BT = '\u0060';
 const FENCE = BT + BT + BT;
 
 // ------------------------------------------------------------------ vocabulary
+/* Base UI is the component framework the agent composes with. A spec node's `type` can be any
+ * Base UI primitive (dialog / switch / accordion / select …); the low-fi renderer draws each one
+ * through a wireframe base type so the preview stays a single dependency-free HTML file. */
+const BUI = (() => {
+  try { return JSON.parse(document.getElementById('smyw-bui').textContent); } catch (e) { return { components: {} }; }
+})();
+const BUI_C = BUI.components || {};
+const BASE_TYPE = {};
+Object.keys(BUI_C).forEach((k) => { BASE_TYPE[k] = BUI_C[k].base || k; });
+function bt(t) { return BASE_TYPE[t] || t; }
+function buiInfo(t) { return BUI_C[t] || BUI_C[bt(t)] || null; }
+
 const TYPE_LABEL = {
   page: '页面', section: '区块', row: '横排', col: '竖排', grid: '网格', card: '卡片', form: '表单',
   list: '列表', item: '列表项', nav: '导航', tabs: '标签页', header: '页头', footer: '页脚',
@@ -497,6 +523,7 @@ const TYPE_LABEL = {
   heading: '标题', text: '文本', image: '图片', table: '表格', chart: '图表', stat: '数值',
   badge: '徽标', tag: '标签', icon: '图标', divider: '分割线', placeholder: '占位'
 };
+Object.keys(BUI_C).forEach((k) => { if (!TYPE_LABEL[k]) TYPE_LABEL[k] = BUI_C[k].name || k; });
 const TYPE_ORDER = Object.keys(TYPE_LABEL);
 const CONTAINER = new Set(['page', 'section', 'row', 'col', 'grid', 'card', 'form', 'list', 'item', 'nav', 'tabs', 'header', 'footer', 'sidebar', 'toolbar', 'panel', 'group', 'modal', 'drawer', 'popover', 'menu']);
 const ROW_TYPES = new Set(['row', 'nav', 'toolbar', 'header', 'footer', 'item']);
@@ -504,6 +531,16 @@ const OVERLAY = new Set(['modal', 'drawer', 'popover', 'menu']);
 const INLINE = new Set(['button', 'link', 'badge', 'tag', 'icon', 'checkbox', 'toggle']);
 const ITEMS_TYPES = new Set(['nav', 'tabs', 'list', 'select', 'radio', 'menu']);
 const USES_TEXT = new Set(['input', 'textarea', 'select', 'stat', 'upload']);
+Object.keys(BUI_C).forEach((k) => {
+  const c = BUI_C[k];
+  const base = c.base || k;
+  if (c.container) { CONTAINER.add(k); CONTAINER.add(base); }
+  if (c.row) { ROW_TYPES.add(k); ROW_TYPES.add(base); }
+  if (c.overlay) { OVERLAY.add(k); OVERLAY.add(base); }
+  if (c.inline) { INLINE.add(k); INLINE.add(base); }
+  if (c.items) { ITEMS_TYPES.add(k); ITEMS_TYPES.add(base); }
+  if (c.text) { USES_TEXT.add(k); USES_TEXT.add(base); }
+});
 const TRIGGER_TYPES = new Set(['button', 'link', 'icon', 'item', 'tag', 'badge', 'text', 'image', 'heading']);
 const CHANGE_LABEL = { added: '新增', removed: '删除', modified: '修改', unchanged: '不变' };
 const CHANGES = new Set(Object.keys(CHANGE_LABEL));
@@ -516,16 +553,16 @@ const CATS = ['位置/布局', '交互方式', '组件类型', '样式/风格', 
 const SEVS = ['必须改', '建议', '疑问'];
 const STYLE_TAGS = ['整体风格不符', '和现有页面不统一', '配色', '信息密度过高', '信息密度过低', '层级/导航不清', '交互方式不对', '文案语气', '移动端适配'];
 const PALETTE = [
-  ['容器', ['section', 'row', 'card', 'form', 'list', 'item', 'tabs', 'toolbar']],
-  ['浮层', ['modal', 'drawer', 'menu', 'popover']],
-  ['控件', ['button', 'link', 'input', 'textarea', 'select', 'checkbox', 'radio', 'toggle', 'upload']],
+  ['Base UI', ['dialog', 'drawer', 'popover', 'menu', 'select', 'switch', 'checkbox', 'tabs', 'accordion', 'toolbar', 'field', 'form', 'toast', 'tooltip', 'avatar', 'progress', 'separator', 'button', 'input']],
+  ['容器', ['section', 'row', 'card', 'list', 'item']],
+  ['控件', ['link', 'textarea', 'upload', 'radio']],
   ['展示', ['heading', 'text', 'table', 'image', 'chart', 'stat', 'badge', 'tag', 'icon', 'divider', 'placeholder']]
 ];
 const VARIANTS = [['', '默认'], ['primary', '主要'], ['secondary', '次要'], ['danger', '危险'], ['ghost', '文字/幽灵'], ['icon', '仅图标']];
 const WIDTHS = [['', '自动'], ['1/4', '1/4'], ['1/3', '1/3'], ['1/2', '1/2'], ['2/3', '2/3'], ['3/4', '3/4'], ['full', '整行']];
 const LAYOUTS = [['', '默认'], ['col', '纵向'], ['row', '横向'], ['grid', '网格']];
 const STEP_KINDS = [['', '普通步骤'], ['decision', '判断/分支'], ['note', '备注']];
-const FIELD_LABEL = { label: '文字', type: '类型', text: '说明', fn: '函数/行为', variant: '样式', w: '宽度', layout: '排列', cols: '列数', items: '选项', columns: '表格列', trigger: '触发按钮', name: '名称', route: '路由', note: '说明', actor: '执行方', kind: '类型', page: '关联页面', rows: '行数' };
+const FIELD_LABEL = { label: '文字', type: '类型', text: '说明', fn: '函数/行为', variant: '样式', w: '宽度', layout: '排列', cols: '列数', items: '选项', columns: '表格列', trigger: '触发按钮', name: '名称', route: '路由', note: '说明', actor: '执行方', kind: '类型', page: '关联页面', rows: '行数', value: '当前值' };
 const SKIP_COPY = new Set(['id', 'before', 'change', 'children', 'movedFrom', 'movedTo', '_um']);
 
 // ------------------------------------------------------------------ small utils
@@ -600,7 +637,7 @@ function curPage() { return pageById(ui.page) || S.spec.pages[0]; }
 function entries(p) { const out = []; const walk = (n, par, list) => { out.push({ n: n, par: par, list: list }); (n.children || []).forEach((c) => walk(c, n, n.children)); }; walk(p.root, null, null); p.overlays.forEach((o) => walk(o, null, p.overlays)); return out; }
 function findNode(p, id) { return entries(p).find((e) => e.n.id === id) || null; }
 function contains(a, b) { return a === b || (a.children || []).some((c) => contains(c, b)); }
-function isCont(n) { return CONTAINER.has(n.type) || !!(n.children && n.children.length); }
+function isCont(n) { return CONTAINER.has(bt(n.type)) || !!(n.children && n.children.length); }
 function afterVisibleIds(p) { const s = new Set(); const walk = (n) => { if (n.change === 'removed') return; s.add(n.id); (n.children || []).forEach(walk); }; walk(p.root); p.overlays.forEach(walk); return s; }
 function parentChain(p, id) { let chain = null; const walk = (n, path) => { if (n.id === id) { chain = path; return true; } return (n.children || []).some((c) => walk(c, path.concat([n]))); }; if (!walk(p.root, [])) p.overlays.some((o) => walk(o, [])); return chain || []; }
 function findBe(id) { for (const m of S.spec.backend) { if (m.id === id) return { m: m, item: null }; const it = m.items.find((i) => i.id === id); if (it) return { m: m, item: it }; } return null; }
@@ -728,12 +765,21 @@ function selectNode(pid, id) { ui.sel = { kind: 'node', page: pid, id: id, side:
 function pfx(p) { return '页面「' + pageName(p) + '」：'; }
 
 function makeNode(type) {
-  const defaults = { button: '新按钮', heading: '新标题', text: '文本内容', input: '字段名', textarea: '字段名', select: '字段名', placeholder: '其余内容' };
+  const base = bt(type);
+  const defaults = {
+    button: '新按钮', heading: '新标题', text: '文本内容', input: '字段名', textarea: '字段名', select: '字段名', placeholder: '其余内容',
+    dialog: '新弹窗', 'alert-dialog': '确认操作', drawer: '新抽屉', popover: '新气泡', menu: '新菜单', 'context-menu': '右键菜单',
+    tooltip: '提示文字', 'preview-card': '预览卡片', toast: '操作成功', switch: '新开关', checkbox: '新复选框', 'checkbox-group': '多选',
+    tabs: '标签页', accordion: '折叠面板', collapsible: '可折叠区块', toolbar: '工具栏', menubar: '菜单栏', 'navigation-menu': '导航',
+    field: '字段', fieldset: '字段组', form: '表单', avatar: 'AB', progress: '进度', meter: '指标', slider: '滑块', separator: '',
+    'radio-group': '单选', combobox: '选择或输入', autocomplete: '搜索', 'number-field': '数量', 'otp-field': '验证码', 'scroll-area': '滚动区域'
+  };
   const n = { id: newId(), type: type, change: 'added' };
-  if (type !== 'divider') n.label = defaults[type] || ('新' + tname(type));
-  if (CONTAINER.has(type)) n.children = [];
-  if (type === 'table') n.columns = ['列 1', '列 2', '列 3'];
-  if (ITEMS_TYPES.has(type) && type !== 'list') n.items = ['选项 1', '选项 2'];
+  if (base !== 'divider') n.label = defaults[type] || ('新' + tname(type));
+  if (CONTAINER.has(type) || CONTAINER.has(base)) n.children = [];
+  if (type === 'table' || base === 'table') n.columns = ['列 1', '列 2', '列 3'];
+  if ((ITEMS_TYPES.has(type) || ITEMS_TYPES.has(base)) && base !== 'list') n.items = ['选项 1', '选项 2'];
+  if (base === 'progress' || type === 'slider') n.value = 60;
   return n;
 }
 function opMove(pid, id, dest) {
@@ -994,7 +1040,7 @@ function itemEl(x, side, cls) {
 function itemsStrip(v, side, cls, col) { return h('div', { class: 'wf-items' + (col ? ' col' : '') }, visItems(v, side, 'items').map((x) => itemEl(x, side, cls))); }
 function bars(n) { const out = h('div', { class: 'wf-bars' }); for (let i = 0; i < Math.min(Number(n) || 0, 6); i++) out.append(h('i', { style: { width: (92 - (i % 3) * 20) + '%' } })); return out; }
 function nodeBody(v, side) {
-  const t = v.type, out = [], label = v.label;
+  const t = bt(v.type), out = [], label = v.label;
   switch (t) {
     case 'heading': out.push(h('div', { class: 'wf-h' }, label || '标题')); break;
     case 'text': out.push(h('div', { class: 'wf-text' }, label || '')); if (v.lines) out.push(bars(v.lines)); break;
@@ -1009,6 +1055,21 @@ function nodeBody(v, side) {
       if (t === 'select' && v.items) out.push(itemsStrip(v, side, 'wf-it'));
       break;
     case 'image': case 'chart': out.push(h('div', { class: 'wf-media ' + t }, h('span', null, t === 'chart' ? '▁▃▅▇▅▃' : '⛶'), h('span', null, label || tname(t)))); break;
+    case 'avatar': out.push(h('div', { class: 'wf-avatar' }, String(label || '?').slice(0, 2).toUpperCase())); break;
+    case 'progress': {
+      if (label) out.push(h('div', { class: 'wf-flabel' }, label));
+      const raw = Number(v.value);
+      const pct = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : 60;
+      out.push(h('div', { class: 'wf-progress-row' }, h('div', { class: 'wf-progress' }, h('i', { style: { width: pct + '%' } })), h('span', { class: 'wf-progress-v' }, Number.isFinite(raw) ? pct + '%' : '')));
+      break;
+    }
+    case 'slider': {
+      if (label) out.push(h('div', { class: 'wf-flabel' }, label));
+      const raw = Number(v.value);
+      const pct = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : 40;
+      out.push(h('div', { class: 'wf-slider' }, h('i', { style: { width: pct + '%' } }), h('b', { style: { left: pct + '%' } }), h('span', null, Number.isFinite(raw) ? pct + '%' : '')));
+      break;
+    }
     case 'stat': if (v.text) out.push(h('div', { class: 'wf-stat' }, v.text)); out.push(h('div', { class: v.text ? 'wf-sub' : 'wf-stat sm' }, label || '指标')); break;
     case 'table': {
       if (label) out.push(h('div', { class: 'wf-cap' }, label));
@@ -1054,7 +1115,7 @@ function renderWF(n, p, o) {
     return slot;
   }
   const v = withState(n, view(n, eff), o.ctx);
-  const t = v.type, kids = v.children || [], cont = isCont(v);
+  const vt = v.type, t = bt(vt), kids = v.children || [], cont = isCont(v);
   const layout = v.layout || (ROW_TYPES.has(t) ? 'row' : 'col');
   const isRoot = n === p.root;
   const ghost = o.ghost || (side === 'merged' && n.change === 'removed');
@@ -1069,7 +1130,7 @@ function renderWF(n, p, o) {
   }
   const unit = o.unit || unitHere;
   const cls = ['wf', 't-' + t, cont ? 'is-c lay-' + layout : 'is-leaf', INLINE.has(t) ? 'inline' : '', v.variant ? 'v-' + v.variant : '', trig ? 'is-trigger' : '', mark, (unit || o.whole) ? 'in-chg' : '', n.hidden && o.ctx !== 'play' ? 'wf-cond' : ''].filter(Boolean).join(' ');
-  const el = h('div', { class: cls, 'data-kind': 'node', 'data-id': n.id, 'data-side': eff, 'data-unit': unit, 'data-partner': n.movedFrom || n.movedTo || null, title: o.ctx === 'canvas' ? (n.note || null) : null });
+  const el = h('div', { class: cls, 'data-kind': 'node', 'data-id': n.id, 'data-side': eff, 'data-unit': unit, 'data-partner': n.movedFrom || n.movedTo || null, 'data-bui': BUI_C[vt] ? vt : null, title: o.ctx === 'canvas' ? (n.note || null) : null });
   if (o.ctx === 'play' && trig) { el.setAttribute('data-ia', '1'); el.setAttribute('data-pg', p.id); }
   applyWidth(el, v.w, o.parentLayout);
   if (layout === 'grid') el.style.setProperty('--cols', String(v.cols || 2));
@@ -1439,7 +1500,7 @@ function overlayFrame(x, p, o) {
   const v = view(x, ghost ? 'before' : 'after');
   const trs = trigList(v).map((t) => findNode(p, t)).filter(Boolean);
   const vs = ghost ? 'before' : 'after';
-  return h('div', { class: 'cv-ov', 'data-ov': x.id, 'data-anchor': trigList(v).join(' ') || null, 'data-trigger': trigList(v).join(' ') || null, 'data-change': ghost ? 'removed' : x.change, style: { width: (OV_W[v.type] || 420) + 'px' } },
+  return h('div', { class: 'cv-ov', 'data-ov': x.id, 'data-anchor': trigList(v).join(' ') || null, 'data-trigger': trigList(v).join(' ') || null, 'data-change': ghost ? 'removed' : x.change, style: { width: (OV_W[bt(v.type)] || OV_W[v.type] || 420) + 'px' } },
     h('div', { class: 'cv-ovh' }, '▸ ' + tname(v.type) + ' · ', trs.length ? ['点击 ', trs.map((t, i) => [i ? '、' : '', h('button', { class: 'lnk', onclick: (e) => { e.stopPropagation(); focusNode(p.id, t.n.id); } }, nlabel(view(t.n, vs)))]), ' 后出现'] : '未指定由哪个元素打开'),
     renderWF(x, p, o));
 }
@@ -1455,7 +1516,7 @@ function revealPanel(n, p, o) {
   const sh = showersOf(n.id);
   const sub = { side: 'merged', ctx: 'canvas', parentLayout: 'col', asPanel: true, ghost: ghost || o.ghost,
     whole: o.whole || !!(anc && (anc.change === 'added' || anc.change === 'removed')), unit: o.unit || (anc ? anc.id : null) };
-  return h('div', { class: 'cv-ov cv-rev', 'data-ov': n.id, 'data-anchor': sh.map((x) => x.id).join(' '), 'data-slot': n.id, 'data-change': ghost ? 'removed' : (anc ? anc.change : n.change), style: { width: (Number(n.pw) || (n.type === 'list' || n.type === 'menu' ? 360 : 480)) + 'px' } },
+  return h('div', { class: 'cv-ov cv-rev', 'data-ov': n.id, 'data-anchor': sh.map((x) => x.id).join(' '), 'data-slot': n.id, 'data-change': ghost ? 'removed' : (anc ? anc.change : n.change), style: { width: (Number(n.pw) || (bt(n.type) === 'list' || bt(n.type) === 'menu' ? 360 : 480)) + 'px' } },
     h('div', { class: 'cv-ovh' }, '▸ 点击 ', sh.map((t, i) => [i ? '、' : '', h('button', { class: 'lnk', onclick: (e) => { e.stopPropagation(); focusNode(p.id, t.id); } }, nlabel(view(t, vs)))]),
       ' 后展开', parent ? ' · 在 ' + nlabel(view(parent, vs)) + ' 里' : '',
       h('button', { class: 'lnk', onclick: (e) => { e.stopPropagation(); const sl = document.querySelector('#cv-world .wf-slot[data-id="' + CSS.escape(n.id) + '"]'); if (sl) focusEl(sl); } }, '看位置')),
@@ -1547,6 +1608,7 @@ function unitDetail(u) {
   out.push(h('div', { class: 'dt-head' }, h('span', { class: 'u-dot u-' + u.change }, String(u.n)), h('b', null, unitTitle(u)), chgChip(u.change)));
   out.push(h('div', { class: 'ins-path' }, h('span', null, isPage ? (p.route || '') : '页面「' + pageName(p) + '」› ' + pathText(p, n, u.change === 'removed' ? 'before' : 'after')), h('code', null, '#' + u.id)));
   if (holder.component || (n && n.component)) out.push(h('div', { class: 'ins-path' }, '代码：', h('code', null, holder.component || n.component)));
+  if (!isPage) { const bb = buiBlock(n.type); if (bb) out.push(bb); }
   if (holder.note) out.push(h('div', { class: 'ins-note' }, h('b', null, 'Agent 说明：'), holder.note));
   if (!isPage && n.before && n.change === 'modified') out.push(diffBox(n));
   if (!isPage && (n.movedFrom || n.movedTo)) {
@@ -1566,7 +1628,7 @@ function unitDetail(u) {
     if (ids.has(x.id)) return;
     trigList(view(x, xs)).filter((tr) => ids.has(tr)).forEach((tr) => { const t = findNode(p, tr); inter.push(h('li', null, '点击 ', t ? nlabel(view(t.n, xs)) : '#' + tr, ' → 打开 ', h('button', { class: 'lnk', onclick: () => focusNode(p.id, x.id) }, '▸ ' + tname(x.type) + '「' + short(x.label || '', 18) + '」'))); });
   });
-  if (!isPage && OVERLAY.has(n.type)) { const ts = trigList(view(n, n.change === 'removed' ? 'before' : 'after')).map((tr) => findNode(p, tr)).filter(Boolean); inter.push(h('li', null, '由 ', ts.length ? ts.map((t, i) => [i ? '、' : '', h('button', { class: 'lnk', onclick: () => focusNode(p.id, t.n.id) }, nlabel(t.n))]) : '（未指定的元素）', ' 打开')); }
+  if (!isPage && OVERLAY.has(bt(n.type))) { const ts = trigList(view(n, n.change === 'removed' ? 'before' : 'after')).map((tr) => findNode(p, tr)).filter(Boolean); inter.push(h('li', null, '由 ', ts.length ? ts.map((t, i) => [i ? '、' : '', h('button', { class: 'lnk', onclick: () => focusNode(p.id, t.n.id) }, nlabel(t.n))]) : '（未指定的元素）', ' 打开')); }
   S.spec.flows.forEach((f) => {
     f.steps.forEach((st, i) => {
       if (!stepRefs(st).some((r) => ids.has(r)) && !(isPage && st.page === p.id)) return;
@@ -1744,8 +1806,9 @@ function playOverlay(id, side) {
   const f = findNodeAnywhere(id); if (!f) return null;
   const n = f.e.n; if (!visible(n, side)) return null;
   const v = view(n, side);
-  const box = h('div', { class: 'pl-ov pl-ov-' + v.type, style: { width: (OV_W[v.type] || 420) + 'px' } }, renderWF(n, f.p, { side: side, ctx: 'play', parentLayout: 'col' }));
-  return h('div', { class: 'pl-back pl-back-' + v.type + (v.type === 'modal' || v.type === 'drawer' ? ' dim' : ''), 'data-close': id }, box);
+  const base = bt(v.type);
+  const box = h('div', { class: 'pl-ov pl-ov-' + base, style: { width: (OV_W[base] || OV_W[v.type] || 420) + 'px' } }, renderWF(n, f.p, { side: side, ctx: 'play', parentLayout: 'col' }));
+  return h('div', { class: 'pl-back pl-back-' + base + (base === 'modal' || base === 'drawer' ? ' dim' : ''), 'data-close': id }, box);
 }
 function renderPlay() {
   const P = ui.play; const p = pageById(P.page) || S.spec.pages[0];
@@ -1920,6 +1983,14 @@ function commentItem(c) {
     h('span', { style: 'margin-left:auto' }), h('button', { class: 'lnk', onclick: (e) => { e.stopPropagation(); mutate(() => { S.comments = S.comments.filter((x) => x.id !== c.id); return null; }); } }, '删除')),
     h('div', { class: 'ctext' }, c.text));
 }
+function buiBlock(type) {
+  const bi = buiInfo(type); if (!bi) return null;
+  return h('div', { class: 'dt-block bui' },
+    h('div', { class: 'sec-t' }, 'Base UI · ' + bi.name),
+    h('code', { class: 'bui-import' }, "import { " + bi.name + " } from '" + BUI.package + "/" + bi.pkg + "'"),
+    h('div', { class: 'hint' }, bi.summary),
+    h('div', { class: 'bui-parts', title: '组合这些 parts' }, bi.parts.join(' · ')));
+}
 function inspNode(s, compact) {
   const p = pageById(s.page); const e = p && findNode(p, s.id); if (!e) return null;
   const n = e.n, v = view(n, s.side);
@@ -1929,6 +2000,7 @@ function inspNode(s, compact) {
   if (!compact) out.push(h('div', { class: 'ins-head' }, h('span', { class: 'ins-type' }, tname(v.type)), h('b', null, v.label || ''), chgChip(chgOf(n, s.side) ? n.change : null)));
   if (!compact) out.push(h('div', { class: 'ins-path' }, h('span', null, (s.side === 'before' ? '改动前 › ' : '改动后 › ') + pathText(p, n, s.side)), h('code', null, '#' + n.id)));
   if (!compact && n.note) out.push(h('div', { class: 'ins-note' }, h('b', null, 'Agent 说明：'), n.note));
+  const bb = !compact && buiBlock(v.type); if (bb) out.push(bb);
   if (!compact && n.before && n.change === 'modified') out.push(diffBox(n));
   if (!compact && n.movedFrom || n.movedTo) out.push(h('div', { class: 'ins-note' }, n.movedFrom ? '这是从原位置移过来的。' : '这个元素被移到了新位置。', h('button', { class: 'lnk', onclick: () => focusNode(p.id, n.movedFrom || n.movedTo) }, '定位另一处')));
   if (editable) out.push(nodeEditor(p, n, e));
@@ -1955,18 +2027,19 @@ function nodeEditor(p, n, e) {
   const cont = isCont(n);
   const f = [];
   f.push(fld('组件类型', sel('type', n.type, TYPE_ORDER.map((k) => [k, tname(k) + '  ' + k]), ed('type'))));
-  if (n.type !== 'divider') f.push(fld(cont ? '标题（可空）' : '文字', inp('label', n.label, ed('label'))));
-  f.push(fld(USES_TEXT.has(n.type) ? '占位提示 / 示例值' : '补充说明（灰色小字）', inp('text', n.text, ed('text'), { multi: !USES_TEXT.has(n.type) })));
+  if (bt(n.type) !== 'divider') f.push(fld(cont ? '标题（可空）' : '文字', inp('label', n.label, ed('label'))));
+  f.push(fld(USES_TEXT.has(bt(n.type)) ? '占位提示 / 示例值' : '补充说明（灰色小字）', inp('text', n.text, ed('text'), { multi: !USES_TEXT.has(bt(n.type)) })));
   f.push(fld('函数 / 行为占位', inp('fn', n.fn, ed('fn'), { ph: '例如 onClick → openEditor()　或　GET /api/tags' })));
-  if (INLINE.has(n.type)) f.push(fld('样式变体', sel('variant', n.variant, VARIANTS, ed('variant'))));
+  if (INLINE.has(bt(n.type))) f.push(fld('样式变体', sel('variant', n.variant, VARIANTS, ed('variant'))));
   if (e.list && e.list !== p.overlays) f.push(fld('宽度', sel('w', n.w, WIDTHS, ed('w'))));
   if (cont) f.push(fld('子元素排列', sel('layout', n.layout, LAYOUTS, ed('layout'))));
   if (cont && n.layout === 'grid') f.push(fld('网格列数', inp('cols', n.cols, ed('cols'))));
-  if (ITEMS_TYPES.has(n.type)) f.push(fld('选项 / 条目（每行一个）', inp('items', visItems(n, 'after', 'items').map(itemText).join('\n'), ed('items'), { multi: true })));
-  if (n.type === 'table') f.push(fld('表格列（每行一个）', inp('columns', visItems(n, 'after', 'columns').map(itemText).join('\n'), ed('columns'), { multi: true })));
-  if (OVERLAY.has(n.type)) {
+  if (ITEMS_TYPES.has(bt(n.type))) f.push(fld('选项 / 条目（每行一个）', inp('items', visItems(n, 'after', 'items').map(itemText).join('\n'), ed('items'), { multi: true })));
+  if (bt(n.type) === 'progress' || bt(n.type) === 'slider') f.push(fld('当前值（0–100）', inp('value', n.value, ed('value'))));
+  if (bt(n.type) === 'table') f.push(fld('表格列（每行一个）', inp('columns', visItems(n, 'after', 'columns').map(itemText).join('\n'), ed('columns'), { multi: true })));
+  if (OVERLAY.has(bt(n.type))) {
     const vis = afterVisibleIds(p);
-    const cands = entries(p).filter((x) => vis.has(x.n.id) && TRIGGER_TYPES.has(x.n.type) && !contains(n, x.n)).map((x) => [x.n.id, nlabel(x.n) + ' #' + x.n.id]);
+    const cands = entries(p).filter((x) => vis.has(x.n.id) && TRIGGER_TYPES.has(bt(x.n.type)) && !contains(n, x.n)).map((x) => [x.n.id, nlabel(x.n) + ' #' + x.n.id]);
     const cur = trigList(n);
     const commit = ed('trigger');
     f.push(h('div', { class: 'fld' }, h('span', null, '由哪些元素触发（可多选）'), h('div', { class: 'trig-list' }, cands.length ? cands.map((c) => h('label', { class: 'trig-opt' },
@@ -1977,7 +2050,7 @@ function nodeEditor(p, n, e) {
     acts.append(btn('↑ 前移', () => mutate(() => opSibling(pid, id, -1)), null, '和前一个元素交换位置'), btn('↓ 后移', () => mutate(() => opSibling(pid, id, 1))), btn('复制', () => mutate(() => opDuplicate(pid, id))), btn('删除', () => mutate(() => opDelete(pid, id)), 'danger'));
   }
   const conv = h('div', { class: 'acts' });
-  if (e.list && e.list !== p.overlays && !OVERLAY.has(n.type)) {
+  if (e.list && e.list !== p.overlays && !OVERLAY.has(bt(n.type))) {
     conv.append(h('span', { class: 'hint', style: 'width:100%' }, '改成点击按钮才出现：'),
       btn('转为弹窗', () => mutate(() => opConvert(pid, id, 'modal'))), btn('转为下拉菜单', () => mutate(() => opConvert(pid, id, 'menu')), null, '二级菜单：点按钮展开'),
       btn('转为抽屉', () => mutate(() => opConvert(pid, id, 'drawer'))), btn('转为气泡', () => mutate(() => opConvert(pid, id, 'popover'))));

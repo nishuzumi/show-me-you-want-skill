@@ -7,9 +7,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const assets = join(here, '..', 'assets');
+const BUI = JSON.parse(readFileSync(join(assets, 'base-ui.json'), 'utf8'));
+const BUI_COMPONENTS = BUI.components || {};
 
-const TYPES = new Set(['page', 'section', 'row', 'col', 'grid', 'card', 'form', 'list', 'item', 'nav', 'tabs', 'header', 'footer', 'sidebar', 'toolbar', 'panel', 'group', 'modal', 'drawer', 'popover', 'menu', 'button', 'link', 'input', 'textarea', 'select', 'checkbox', 'radio', 'toggle', 'upload', 'heading', 'text', 'image', 'table', 'chart', 'stat', 'badge', 'tag', 'icon', 'divider', 'placeholder']);
-const OVERLAY = new Set(['modal', 'drawer', 'popover', 'menu']);
+// The wireframe vocabulary plus the Base UI primitives the agent can compose with.
+const TYPES = new Set(['page', 'section', 'row', 'col', 'grid', 'card', 'form', 'list', 'item', 'nav', 'tabs', 'header', 'footer', 'sidebar', 'toolbar', 'panel', 'group', 'modal', 'drawer', 'popover', 'menu', 'button', 'link', 'input', 'textarea', 'select', 'checkbox', 'radio', 'toggle', 'upload', 'heading', 'text', 'image', 'table', 'chart', 'stat', 'badge', 'tag', 'icon', 'divider', 'placeholder', ...Object.keys(BUI_COMPONENTS)]);
+const OVERLAY = new Set(['modal', 'drawer', 'popover', 'menu', ...Object.keys(BUI_COMPONENTS).filter((k) => BUI_COMPONENTS[k].overlay)]);
 const CHANGES = new Set(['added', 'removed', 'modified', 'unchanged']);
 const IA_ACTIONS = new Set(['open', 'close', 'navigate', 'toggle', 'show', 'hide', 'state', 'back']);
 const ACTORS = new Set(['user', 'frontend', 'backend', 'db', 'external', 'system']);
@@ -54,10 +57,12 @@ const template = readFileSync(join(assets, 'template.html'), 'utf8');
 const css = readFileSync(join(assets, 'style.css'), 'utf8');
 const runtime = readFileSync(join(assets, 'runtime.js'), 'utf8');
 const specJson = JSON.stringify(spec).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+const buiJson = JSON.stringify(BUI).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 const html = template
   .replace('__TITLE__', () => escapeHtml((spec.title || 'smyw') + ' · 变更预览'))
   .replace('/*__STYLE__*/', () => css)
   .replace('/*__RUNTIME__*/', () => runtime.replace(/<\/script/gi, '<\\/script'))
+  .replace('__BUI__', () => buiJson)
   .replace('__SPEC__', () => specJson);
 const outPath = resolve(out || join(dirname(specPath), 'preview.html'));
 mkdirSync(dirname(outPath), { recursive: true });
@@ -78,6 +83,7 @@ function validate(spec) {
   for (const k of ['pages', 'flows', 'backend', 'changes', 'questions']) if (spec[k] !== undefined && !Array.isArray(spec[k])) errors.push(k + ' 必须是数组');
   const ids = new Map();
   const iaRefs = [];
+  let buiCount = 0;
   const reg = (o, where) => {
     if (o.id == null) return;
     const k = String(o.id);
@@ -104,13 +110,14 @@ function validate(spec) {
       reg(n, where); chk(n, where); if (n !== p.root) bump(cnt.nodes, n);
       if (n.id != null) pageIds.add(String(n.id)); else warnings.push(where + '：没有 id（会自动生成，但反馈里引用不稳定，建议补上）');
       if (n.type && !TYPES.has(n.type)) warnings.push(where + '：未知组件类型 "' + n.type + '"，将按通用方框显示');
+      if (n.type && BUI_COMPONENTS[n.type]) buiCount++;
       if (n.before && n.before.children) errors.push(where + '：before 里不能放 children；子元素的增删请标在子元素自己身上');
       if (n.children !== undefined && !Array.isArray(n.children)) errors.push(where + '：children 必须是数组');
       if (parent && parent.change === 'removed' && n.change === 'added') warnings.push(where + '：父元素被删除，子元素却标为新增，右侧不会显示它');
       if (parent && parent.change === 'added' && n.change === 'removed') warnings.push(where + '：父元素是新增的，子元素却标为删除，左侧不会显示它');
       if (n.trigger != null && !(typeof n.trigger === 'string' || (Array.isArray(n.trigger) && n.trigger.every((x) => typeof x === 'string')))) errors.push(where + '：trigger 必须是元素 id 字符串，或 id 数组（多个按钮打开同一个弹层）');
       for (const t of n.trigger == null ? [] : (Array.isArray(n.trigger) ? n.trigger : [n.trigger])) triggers.push([String(t), where]);
-      if (n.trigger && !OVERLAY.has(n.type)) warnings.push(where + '：只有 modal / drawer / popover / menu 才需要 trigger');
+      if (n.trigger && !OVERLAY.has(n.type)) warnings.push(where + '：只有弹层（modal / drawer / popover / menu，或 Base UI 的 Dialog / Drawer / Popover / Menu / Tooltip / Toast）才需要 trigger');
       if (n.movedFrom) moves.push([String(n.movedFrom), where, 'movedFrom']);
       if (n.movedTo) moves.push([String(n.movedTo), where, 'movedTo']);
       if (n.movedFrom && n.change !== 'added') warnings.push(where + '：有 movedFrom 的元素应标为 change=added');
@@ -138,8 +145,9 @@ function validate(spec) {
     if (p.overlays !== undefined && !Array.isArray(p.overlays)) errors.push(pw + '：overlays 必须是数组');
     (Array.isArray(p.overlays) ? p.overlays : []).forEach((o) => {
       walk(o, null, pw + ' › 弹层');
-      if (o && o.type && !OVERLAY.has(o.type)) warnings.push(pw + ' › 弹层 #' + o.id + '：overlays 里的元素通常是 modal / drawer / popover / menu');
-      if (o && (!o.trigger || (Array.isArray(o.trigger) && !o.trigger.length))) warnings.push(pw + ' › 弹层「' + (o.label || o.id) + '」：没有 trigger，用户看不出它由哪个按钮打开');
+      const optionalTrigger = o && BUI_COMPONENTS[o.type] && BUI_COMPONENTS[o.type].optionalTrigger;
+      if (o && o.type && !OVERLAY.has(o.type)) warnings.push(pw + ' › 弹层 #' + o.id + '：overlays 里的元素通常是 modal / drawer / popover / menu 或 Base UI 的 Dialog / Drawer / Popover / Menu / Tooltip');
+      if (o && !optionalTrigger && (!o.trigger || (Array.isArray(o.trigger) && !o.trigger.length))) warnings.push(pw + ' › 弹层「' + (o.label || o.id) + '」：没有 trigger，用户看不出它由哪个按钮打开');
     });
     for (const [t, where] of triggers) if (!pageIds.has(t)) iaRefs.push([t, 'trigger', where]);
     if (placeholders.length) warnings.push(pw + '：有 ' + placeholders.length + ' 个「（不变）」占位框。没改动的模块也要画成真实模块：写它在界面上的名字 + component，不展开 children 即可（会显示「内容不变，未展开」）');
@@ -177,7 +185,7 @@ function validate(spec) {
     for (const it of m.items || []) { const iw = mw + ' › ' + (it.name || it.id || '?'); reg(it, iw); chk(it, iw); bump(cnt.be, it); }
   }
   const f = (b) => '+' + b.added + ' −' + b.removed + ' ~' + b.modified;
-  const summary = '· 页面 ' + pages.length + '（' + f(cnt.pages) + '）· 界面元素变化 ' + f(cnt.nodes) + ' · 流程 ' + flows.length + '（步骤 ' + f(cnt.steps) + '）· 后端 ' + backend.length + ' 个模块（' + f(cnt.be) + '）';
+  const summary = '· 页面 ' + pages.length + '（' + f(cnt.pages) + '）· 界面元素变化 ' + f(cnt.nodes) + ' · 流程 ' + flows.length + '（步骤 ' + f(cnt.steps) + '）· 后端 ' + backend.length + ' 个模块（' + f(cnt.be) + '）' + (buiCount ? ' · Base UI 组件 ' + buiCount : '');
   if (!pages.length && !flows.length && !backend.length) warnings.push('spec 里没有 pages / flows / backend，预览将是空的');
   return { errors, warnings, summary };
 }

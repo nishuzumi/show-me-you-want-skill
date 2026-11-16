@@ -1,0 +1,610 @@
+{
+  "framework": "base-ui",
+  "version": "1.9.0",
+  "package": "@base-ui/react",
+  "docs": "https://base-ui.com/react/components",
+  "components": {
+    "accordion": {
+      "name": "Accordion",
+      "pkg": "accordion",
+      "summary": "A set of collapsible panels with headings.",
+      "parts": [
+        "Root",
+        "Item",
+        "Header",
+        "Trigger",
+        "Panel"
+      ],
+      "base": "list",
+      "container": true,
+      "items": true
+    },
+    "alert-dialog": {
+      "name": "AlertDialog",
+      "pkg": "alert-dialog",
+      "summary": "A dialog that requires a user response to proceed.",
+      "parts": [
+        "Root",
+        "Trigger",
+        "Portal",
+        "Backdrop",
+        "Viewport",
+        "Popup",
+        "Title",
+        "Description",
+        "Close"
+      ],
+      "base": "modal",
+      "container": true,
+      "overlay": true
+    },
+    "autocomplete": {
+      "name": "Autocomplete",
+      "pkg": "autocomplete",
+      "summary": "An input that suggests options as you type.",
+      "parts": [
+        "Root",
+        "InputGroup",
+        "Input",
+        "Portal",
+        "Positioner",
+        "Popup",
+        "List",
+        "Item"
+      ],
+      "base": "select",
+      "items": true,
+      "text": true
+    },
+    "avatar": {
+      "name": "Avatar",
+      "pkg": "avatar",
+      "summary": "An easily stylable avatar.",
+      "parts": [
+        "Root",
+        "Image",
+        "Fallback"
+      ],
+      "base": "avatar"
+    },
+    "button": {
+      "name": "Button",
+      "pkg": "button",
+      "summary": "A button with consistent keyboard and accessibility behavior.",
+      "parts": [
+        "Button"
+      ],
+      "base": "button",
+      "inline": true
+    },
+    "checkbox": {
+      "name": "Checkbox",
+      "pkg": "checkbox",
+      "summary": "An easily stylable checkbox.",
+      "parts": [
+        "Root",
+        "Indicator"
+      ],
+      "base": "checkbox",
+      "inline": true
+    },
+    "checkbox-group": {
+      "name": "CheckboxGroup",
+      "pkg": "checkbox-group",
+      "summary": "Provides shared state to a series of checkboxes.",
+      "parts": [
+        "CheckboxGroup",
+        "Checkbox.Root",
+        "Checkbox.Indicator"
+      ],
+      "base": "group",
+      "container": true,
+      "items": true
+    },
+    "collapsible": {
+      "name": "Collapsible",
+      "pkg": "collapsible",
+      "summary": "A collapsible panel controlled by a button.",
+      "parts": [
+        "Root",
+        "Trigger",
+        "Panel"
+      ],
+      "base": "section",
+      "container": true
+    },
+    "combobox": {
+      "name": "Combobox",
+      "pkg": "combobox",
+      "summary": "An input combined with a list of predefined items to select.",
+      "parts": [
+        "Root",
+        "InputGroup",
+        "Input",
+        "Portal",
+        "Positioner",
+        "Popup",
+        "List",
+        "Item"
+      ],
+      "base": "select",
+      "items": true,
+      "text": true
+    },
+    "context-menu": {
+      "name": "ContextMenu",
+      "pkg": "context-menu",
+      "summary": "A menu that appears at the pointer on right click or long press.",
+      "parts": [
+        "Root",
+        "Trigger",
+        "Portal",
+        "Positioner",
+        "Popup",
+        "Item",
+        "Separator",
+        "SubmenuRoot"
+      ],
+      "base": "menu",
+      "container": true,
+      "overlay": true,
+      "items": true
+    },
+    "dialog": {
+      "name": "Dialog",
+      "pkg": "dialog",
+      "summary": "A popup that opens on top of the entire page.",
+      "parts": [
+        "Root",
+        "Trigger",
+        "Portal",
+        "Backdrop",
+        "Viewport",
+        "Popup",
+        "Title",
+        "Description",
+        "Close"
+      ],
+      "base": "modal",
+      "container": true,
+      "overlay": true
+    },
+    "drawer": {
+      "name": "Drawer",
+      "pkg": "drawer",
+      "summary": "A panel that slides in from the edge of the screen.",
+      "parts": [
+        "Provider",
+        "Indent",
+        "Root",
+        "Trigger",
+        "Portal",
+        "Backdrop",
+        "Viewport",
+        "Popup",
+        "Content",
+        "Title",
+        "Description",
+        "Close"
+      ],
+      "base": "drawer",
+      "container": true,
+      "overlay": true
+    },
+    "field": {
+      "name": "Field",
+      "pkg": "field",
+      "summary": "Labeling and validation for a form control.",
+      "parts": [
+        "Root",
+        "Label",
+        "Control",
+        "Description",
+        "Item",
+        "Error",
+        "Validity"
+      ],
+      "base": "form",
+      "container": true
+    },
+    "fieldset": {
+      "name": "Fieldset",
+      "pkg": "fieldset",
+      "summary": "A native fieldset with an easily stylable legend.",
+      "parts": [
+        "Root",
+        "Legend"
+      ],
+      "base": "group",
+      "container": true
+    },
+    "form": {
+      "name": "Form",
+      "pkg": "form",
+      "summary": "A native form element with consolidated error handling.",
+      "parts": [
+        "Form",
+        "Field.Root",
+        "Field.Label",
+        "Field.Control",
+        "Field.Error"
+      ],
+      "base": "form",
+      "container": true
+    },
+    "input": {
+      "name": "Input",
+      "pkg": "input",
+      "summary": "A native input with consistent styling hooks.",
+      "parts": [
+        "Input"
+      ],
+      "base": "input",
+      "text": true
+    },
+    "menu": {
+      "name": "Menu",
+      "pkg": "menu",
+      "summary": "A list of actions in a dropdown, with keyboard navigation.",
+      "parts": [
+        "Root",
+        "Trigger",
+        "Portal",
+        "Positioner",
+        "Popup",
+        "Item",
+        "Separator",
+        "Group",
+        "SubmenuRoot",
+        "SubmenuTrigger"
+      ],
+      "base": "menu",
+      "container": true,
+      "overlay": true,
+      "items": true
+    },
+    "menubar": {
+      "name": "Menubar",
+      "pkg": "menubar",
+      "summary": "A menu bar providing commands and options for your application.",
+      "parts": [
+        "Menubar",
+        "Menu.Root",
+        "Menu.Trigger",
+        "Menu.Popup",
+        "Menu.Item"
+      ],
+      "base": "toolbar",
+      "container": true,
+      "row": true,
+      "items": true
+    },
+    "meter": {
+      "name": "Meter",
+      "pkg": "meter",
+      "summary": "A graphical display of a numeric value within a range.",
+      "parts": [
+        "Root",
+        "Label",
+        "Track",
+        "Indicator",
+        "Value"
+      ],
+      "base": "progress"
+    },
+    "navigation-menu": {
+      "name": "NavigationMenu",
+      "pkg": "navigation-menu",
+      "summary": "A collection of links and menus for website navigation.",
+      "parts": [
+        "Root",
+        "List",
+        "Item",
+        "Trigger",
+        "Content",
+        "Link",
+        "Portal",
+        "Popup",
+        "Viewport"
+      ],
+      "base": "nav",
+      "container": true,
+      "row": true,
+      "items": true
+    },
+    "number-field": {
+      "name": "NumberField",
+      "pkg": "number-field",
+      "summary": "A numeric input with increment and decrement buttons.",
+      "parts": [
+        "Root",
+        "Group",
+        "Decrement",
+        "Input",
+        "Increment"
+      ],
+      "base": "input",
+      "text": true
+    },
+    "otp-field": {
+      "name": "OTPField",
+      "pkg": "otp-field",
+      "summary": "A one-time password input composed of individual character slots.",
+      "parts": [
+        "Root",
+        "Input",
+        "Separator"
+      ],
+      "base": "input",
+      "text": true
+    },
+    "popover": {
+      "name": "Popover",
+      "pkg": "popover",
+      "summary": "An accessible popup anchored to a button.",
+      "parts": [
+        "Root",
+        "Trigger",
+        "Portal",
+        "Backdrop",
+        "Positioner",
+        "Popup",
+        "Arrow",
+        "Viewport",
+        "Title",
+        "Description",
+        "Close"
+      ],
+      "base": "popover",
+      "container": true,
+      "overlay": true
+    },
+    "preview-card": {
+      "name": "PreviewCard",
+      "pkg": "preview-card",
+      "summary": "A card that appears while hovering a link or trigger.",
+      "parts": [
+        "Root",
+        "Trigger",
+        "Portal",
+        "Backdrop",
+        "Positioner",
+        "Popup",
+        "Arrow",
+        "Viewport"
+      ],
+      "base": "popover",
+      "container": true,
+      "overlay": true
+    },
+    "progress": {
+      "name": "Progress",
+      "pkg": "progress",
+      "summary": "Displays the status of a task that takes a long time.",
+      "parts": [
+        "Root",
+        "Label",
+        "Track",
+        "Indicator",
+        "Value"
+      ],
+      "base": "progress"
+    },
+    "radio": {
+      "name": "RadioGroup",
+      "pkg": "radio-group",
+      "summary": "Provides shared state to a series of radio buttons.",
+      "parts": [
+        "RadioGroup",
+        "Radio.Root",
+        "Radio.Indicator"
+      ],
+      "base": "radio",
+      "items": true
+    },
+    "radio-group": {
+      "name": "RadioGroup",
+      "pkg": "radio-group",
+      "summary": "Provides shared state to a series of radio buttons.",
+      "parts": [
+        "RadioGroup",
+        "Radio.Root",
+        "Radio.Indicator"
+      ],
+      "base": "radio",
+      "items": true
+    },
+    "scroll-area": {
+      "name": "ScrollArea",
+      "pkg": "scroll-area",
+      "summary": "A native scroll container with custom scrollbars.",
+      "parts": [
+        "Root",
+        "Viewport",
+        "Content",
+        "Scrollbar",
+        "Thumb",
+        "Corner"
+      ],
+      "base": "panel",
+      "container": true
+    },
+    "select": {
+      "name": "Select",
+      "pkg": "select",
+      "summary": "Choose a predefined value in a dropdown menu.",
+      "parts": [
+        "Root",
+        "Label",
+        "Trigger",
+        "Value",
+        "Icon",
+        "Portal",
+        "Positioner",
+        "Popup",
+        "List",
+        "Item"
+      ],
+      "base": "select",
+      "items": true,
+      "text": true
+    },
+    "separator": {
+      "name": "Separator",
+      "pkg": "separator",
+      "summary": "A separator accessible to screen readers.",
+      "parts": [
+        "Separator"
+      ],
+      "base": "divider"
+    },
+    "slider": {
+      "name": "Slider",
+      "pkg": "slider",
+      "summary": "An easily stylable range input.",
+      "parts": [
+        "Root",
+        "Label",
+        "Value",
+        "Control",
+        "Track",
+        "Indicator",
+        "Thumb"
+      ],
+      "base": "slider"
+    },
+    "switch": {
+      "name": "Switch",
+      "pkg": "switch",
+      "summary": "A control that indicates whether a setting is on or off.",
+      "parts": [
+        "Root",
+        "Thumb"
+      ],
+      "base": "toggle",
+      "inline": true
+    },
+    "tabs": {
+      "name": "Tabs",
+      "pkg": "tabs",
+      "summary": "Toggles between related panels on the same page.",
+      "parts": [
+        "Root",
+        "List",
+        "Tab",
+        "Indicator",
+        "Panel"
+      ],
+      "base": "tabs",
+      "container": true,
+      "items": true
+    },
+    "toast": {
+      "name": "Toast",
+      "pkg": "toast",
+      "summary": "Generates toast notifications.",
+      "parts": [
+        "Provider",
+        "Portal",
+        "Viewport",
+        "Root",
+        "Content",
+        "Title",
+        "Description",
+        "Action",
+        "Close"
+      ],
+      "base": "popover",
+      "container": true,
+      "overlay": true,
+      "optionalTrigger": true
+    },
+    "toggle": {
+      "name": "Toggle",
+      "pkg": "toggle",
+      "summary": "A two-state button that can be on or off.",
+      "parts": [
+        "Toggle"
+      ],
+      "base": "toggle",
+      "inline": true
+    },
+    "toggle-group": {
+      "name": "ToggleGroup",
+      "pkg": "toggle-group",
+      "summary": "Provides shared state to a series of toggle buttons.",
+      "parts": [
+        "ToggleGroup",
+        "Toggle"
+      ],
+      "base": "toolbar",
+      "container": true,
+      "row": true,
+      "items": true
+    },
+    "toolbar": {
+      "name": "Toolbar",
+      "pkg": "toolbar",
+      "summary": "A container for grouping buttons and controls.",
+      "parts": [
+        "Root",
+        "Button",
+        "Link",
+        "Separator",
+        "Group",
+        "Input"
+      ],
+      "base": "toolbar",
+      "container": true,
+      "row": true
+    },
+    "tooltip": {
+      "name": "Tooltip",
+      "pkg": "tooltip",
+      "summary": "A short message that appears on hover or focus.",
+      "parts": [
+        "Provider",
+        "Root",
+        "Trigger",
+        "Portal",
+        "Positioner",
+        "Popup",
+        "Arrow",
+        "Viewport"
+      ],
+      "base": "popover",
+      "container": true,
+      "overlay": true
+    },
+    "modal": {
+      "name": "Dialog",
+      "pkg": "dialog",
+      "summary": "A popup that opens on top of the entire page.",
+      "parts": [
+        "Root",
+        "Trigger",
+        "Portal",
+        "Backdrop",
+        "Viewport",
+        "Popup",
+        "Title",
+        "Description",
+        "Close"
+      ],
+      "base": "modal",
+      "container": true,
+      "overlay": true,
+      "legacy": true
+    },
+    "divider": {
+      "name": "Separator",
+      "pkg": "separator",
+      "summary": "A separator accessible to screen readers.",
+      "parts": [
+        "Separator"
+      ],
+      "base": "divider",
+      "legacy": true
+    }
+  }
+}
