@@ -3,7 +3,7 @@
 // exercise units / detail / camera / edit / comment / export, rebuild from the pasted feedback,
 // and run the page inside a DSH-style sandboxed iframe (opaque origin: no storage / clipboard / dialogs).
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtempSync, cpSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, cpSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,8 +19,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 cpSync(join(skill, 'examples', 'task-tags', 'spec.json'), join(work, 'spec.json'));
 execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(work, 'spec.json')], { stdio: 'inherit' });
-execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(skill, 'examples', 'helpdesk-ai', 'spec.json')], { stdio: 'ignore' });
-execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(skill, 'examples', 'base-ui', 'spec.json')], { stdio: 'ignore' });
+execFileSync('node', [join(skill, 'scripts', 'build.mjs'), '--no-archive', join(skill, 'examples', 'helpdesk-ai', 'spec.json')], { stdio: 'ignore' });
+execFileSync('node', [join(skill, 'scripts', 'build.mjs'), '--no-archive', join(skill, 'examples', 'base-ui', 'spec.json')], { stdio: 'ignore' });
 execFileSync('mkdir', ['-p', shots]);
 
 const dport = 9300 + Math.floor(Math.random() * 500);
@@ -172,11 +172,131 @@ check('a patch made on an older version is refused', /v1/.test(staleErr) && /v2/
 console.log('round trip: v2 → build → render');
 execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(work, 'spec.json')], { stdio: 'ignore' });
 await open(join(work, 'preview.html'));
-const v2 = await ev('return { ver: smyw.state.spec.version, dialog: !!document.querySelector(".cv-ov [data-bui=dialog]"), inlineGone: !document.querySelector("#cv-world [data-id=task-form-card]"), ghost: !!document.querySelector("#cv-world [data-id=search][data-side=before].mk-removed"), trig: !!document.querySelector("#cv-world .is-trigger") }');
-check('v2 renders the user-edited structure (Dialog + trigger + moved-out ghost)', v2.ver === 2 && v2.dialog && v2.inlineGone && v2.ghost && v2.trig, v2);
+const v2 = await ev('return { ver: smyw.state.spec.version, vers: smyw.versions.map(v => v.version), leftVer: smyw.ui.leftVer, rightVer: smyw.ui.rightVer, dialog: !!document.querySelector(".cv-ov [data-bui=dialog]"), inlineInV1: !!document.querySelector("#cv-world [data-id=task-form-card][data-side=before].mk-removed"), inlineInV2: !!document.querySelector("#cv-world [data-id=task-form-card][data-side=after]"), ghost: !!document.querySelector("#cv-world [data-id=search][data-side=before].mk-removed"), trig: !!document.querySelector("#cv-world .is-trigger") }');
+check('v2 defaults to v1→v2 incremental diff (task-form-card removed in v1, Dialog added in v2)', v2.ver === 2 && v2.vers.join(',') === '0,1,2' && v2.leftVer === 1 && v2.rightVer === 2 && v2.dialog && v2.inlineInV1 && !v2.inlineInV2 && v2.ghost && v2.trig, v2);
+await ev('document.querySelector("[data-ver-toggle]").click(); return true'); await sleep(200);
+const v2Full = await ev('return { leftVer: smyw.ui.leftVer, rightVer: smyw.ui.rightVer, inlineGone: !document.querySelector("#cv-world [data-id=task-form-card]"), dialog: !!document.querySelector(".cv-ov [data-bui=dialog]") }');
+check('one-click toggle switches to v0→v2 full diff (v1-only inline card gone)', v2Full.leftVer === 0 && v2Full.rightVer === 2 && v2Full.inlineGone && v2Full.dialog, v2Full);
 await ev('const t = document.querySelector("#cv-world .is-trigger"); t.click(); return true'); await sleep(300);
 check('selecting a trigger lists its interactions and offers to try it in play mode', await ev('return [...document.querySelectorAll("#inspector .dt-list li")].some(li => li.textContent.includes("打开")) && [...document.querySelectorAll("#inspector button")].some(b => b.textContent.includes("在演示里点一下"))'));
 await shot('06-v2');
+
+console.log('multi-version snapshots & arbitrary version comparison');
+const mvDir = mkdtempSync(join(tmpdir(), 'smyw-mv-'));
+const mvV1 = {
+  title: '多版本测试', version: 1, stage: 'prototype', versionNote: '初版：加按钮与统计',
+  pages: [{
+    id: 'p1', name: '主面板', route: '/panel',
+    root: { id: 'p1-root', type: 'page', children: [
+      { id: 'hdr', type: 'header', component: '<PanelHeader>', children: [
+        { id: 'h1', type: 'heading', label: '面板 v1', change: 'modified', before: { label: '面板 v0' }, note: 'v1 改名' },
+        { id: 'v1-only-btn', type: 'button', label: 'v1 临时按钮', change: 'added', note: 'v1 新增的按钮' },
+        { id: 'open-err', type: 'button', label: '查看错误', change: 'unchanged' },
+        { id: 'open-same', type: 'button', label: '查看帮助', change: 'unchanged' },
+        { id: 'toggle-tab2', type: 'button', label: '展开摘要', change: 'unchanged', on: [{ action: 'toggle', target: 'rev-summary' }] }
+      ] },
+      { id: 'box-a', type: 'card', label: '区域 A', component: '<BoxA>', children: [
+        { id: 'move-me', type: 'button', label: '可移动按钮', change: 'unchanged' }
+      ] },
+      { id: 'box-b', type: 'card', label: '区域 B', component: '<BoxB>', children: [] },
+      { id: 'rev-summary', type: 'card', label: '往届摘要面板', hidden: true, change: 'unchanged', children: [
+        { id: 'rev-txt', type: 'text', label: 'v1 摘要内容', change: 'modified', before: { label: 'v0 摘要内容' } }
+      ] }
+    ] },
+    overlays: [
+      { id: 'err-dlg', type: 'dialog', label: '错误调试弹窗', trigger: 'open-err', change: 'unchanged', children: [
+        { id: 'err-msg', type: 'text', label: 'v1 错误信息', change: 'modified', before: { label: 'v0 错误信息' } }
+      ] },
+      { id: 'same-dlg', type: 'dialog', label: '帮助弹窗', trigger: 'open-same', change: 'unchanged', children: [
+        { id: 'same-msg', type: 'text', label: '固定帮助说明', change: 'unchanged' }
+      ] }
+    ]
+  }],
+  flows: [{ id: 'f1', name: '核心流程', steps: [
+    { id: 's1', actor: 'user', text: '进入面板', change: 'unchanged' },
+    { id: 's-v1', actor: 'frontend', text: 'v1 临时步骤', change: 'added' }
+  ] }],
+  backend: [{ id: 'm1', name: 'PanelAPI', kind: 'api', items: [
+    { id: 'b1', kind: 'api', name: 'GET /panel', change: 'unchanged' },
+    { id: 'b-v1', kind: 'api', name: 'POST /temp', change: 'added' }
+  ] }]
+};
+writeFileSync(join(mvDir, 'spec.json'), JSON.stringify(mvV1, null, 2));
+execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(mvDir, 'spec.json')], { stdio: 'ignore' });
+const mvV2 = {
+  title: '多版本测试', version: 2, stage: 'prototype', versionNote: '第二版：删临时按钮、移动按钮、补次页',
+  pages: [
+    {
+      id: 'p1', name: '主面板', route: '/panel',
+      root: { id: 'p1-root', type: 'page', children: [
+        { id: 'hdr', type: 'header', component: '<PanelHeader>', children: [
+          { id: 'h1', type: 'heading', label: '面板 v2', change: 'modified', before: { label: '面板 v0' }, note: 'v2 再次改名' },
+          { id: 'open-err', type: 'button', label: '查看错误', change: 'unchanged' },
+          { id: 'open-same', type: 'button', label: '查看帮助', change: 'unchanged' },
+          { id: 'toggle-tab2', type: 'button', label: '展开摘要', change: 'unchanged', on: [{ action: 'toggle', target: 'rev-summary' }] }
+        ] },
+        { id: 'box-a', type: 'card', label: '区域 A', component: '<BoxA>', children: [
+          { id: 'move-me-old', type: 'button', label: '可移动按钮', change: 'removed', movedTo: 'move-me' }
+        ] },
+        { id: 'box-b', type: 'card', label: '区域 B', component: '<BoxB>', children: [
+          { id: 'move-me', type: 'button', label: '可移动按钮', change: 'added', movedFrom: 'move-me-old' },
+          { id: 'v2-banner', type: 'text', label: 'v2 新增提示条', change: 'added', note: 'v2 新增' }
+        ] },
+        { id: 'rev-summary', type: 'card', label: '往届摘要面板', hidden: true, change: 'unchanged', children: [
+          { id: 'rev-txt', type: 'text', label: 'v2 精简摘要内容', change: 'modified', before: { label: 'v0 摘要内容' } }
+        ] }
+      ] },
+      overlays: [
+        { id: 'err-dlg', type: 'dialog', label: '错误调试弹窗', trigger: 'open-err', change: 'unchanged', children: [
+          { id: 'err-msg', type: 'text', label: 'v2 新错误详情', change: 'modified', before: { label: 'v0 错误信息' } }
+        ] },
+        { id: 'same-dlg', type: 'dialog', label: '帮助弹窗', trigger: 'open-same', change: 'unchanged', children: [
+          { id: 'same-msg', type: 'text', label: '固定帮助说明', change: 'unchanged' }
+        ] }
+      ]
+    },
+    {
+      id: 'p2', name: '设置页', route: '/settings',
+      root: { id: 'p2-root', type: 'page', children: [
+        { id: 'p2-title', type: 'heading', label: '新设置', component: '<Settings>', change: 'modified', before: { label: '旧设置' }, note: 'v2 首次改到已有设置页' }
+      ] },
+      overlays: []
+    }
+  ],
+  flows: [{ id: 'f1', name: '核心流程', steps: [
+    { id: 's1', actor: 'user', text: '进入面板', change: 'unchanged' },
+    { id: 's-v2', actor: 'backend', text: 'v2 新增后端步骤', change: 'added' }
+  ] }],
+  backend: [{ id: 'm1', name: 'PanelAPI', kind: 'api', items: [
+    { id: 'b1', kind: 'api', name: 'GET /panel', change: 'unchanged' },
+    { id: 'b-v2', kind: 'api', name: 'POST /v2', change: 'added' }
+  ] }]
+};
+writeFileSync(join(mvDir, 'spec.json'), JSON.stringify(mvV2, null, 2));
+execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(mvDir, 'spec.json')], { stdio: 'ignore' });
+check('build.mjs auto-archives spec-v1.json and spec-v2.json', existsSync(join(mvDir, 'spec-v1.json')) && existsSync(join(mvDir, 'spec-v2.json')));
+await open(join(mvDir, 'preview.html'));
+await ev('localStorage.clear(); return true');
+const mvInit = await ev('const opts = [...document.querySelectorAll(".ver-sel[data-ver=right] option")].map(o => o.textContent); const bridge = (document.querySelector(".cv-bridge-lbl") || {}).textContent; const sides = [...document.querySelectorAll(".cv-group[data-page=p1] > .cv-cmp-box .cv-side-tag")].map(e => e.textContent); return { left: smyw.ui.leftVer, right: smyw.ui.rightVer, opts, bridge, sides, v1Removed: !!document.querySelector("#cv-world [data-id=v1-only-btn][data-side=before].mk-removed"), ghostMove: !!document.querySelector("#cv-world [data-id=move-me__from][data-side=before].mk-removed"), realMove: !!document.querySelector("#cv-world [data-id=move-me][data-side=after].mk-added"), v2Added: !!document.querySelector("#cv-world [data-id=v2-banner][data-side=after].mk-added") }');
+check('multi-version opens on v1→v2 with versionNote labels, virtual move ghost, and incremental diff', mvInit.left === 1 && mvInit.right === 2 && mvInit.bridge === 'v1→v2' && mvInit.sides.join(',') === 'v1,v2 最新' && mvInit.opts.some((t) => t.includes('精简') || t.includes('第二版')) && mvInit.v1Removed && mvInit.ghostMove && mvInit.realMove && mvInit.v2Added, mvInit);
+const mvPanels = await ev('const area = document.querySelector(".cv-group[data-page=p1] > .cv-panels-area"); const mainBox = document.querySelector(".cv-group[data-page=p1] > .cv-cmp-box"); const revCmp = area && area.querySelector(".cv-ov-cmp[data-ov-group=rev-summary]"); const dlgCmp = area && area.querySelector(".cv-ov-cmp[data-ov-group=err-dlg]"); const sameCards = document.querySelectorAll("#cv-world .cv-ov[data-ov=same-dlg]").length; const revB = revCmp && revCmp.querySelector(".cv-ov[data-side=before]").getBoundingClientRect(); const revA = revCmp && revCmp.querySelector(".cv-ov[data-side=after]").getBoundingClientRect(); return { belowMain: !!(area && mainBox && area.getBoundingClientRect().top >= mainBox.getBoundingClientRect().bottom - 2), noSideCols: !document.querySelector(".cv-group[data-page=p1] > .cv-ovcol"), revPaired: !!(revCmp && revB && revA && revA.left - revB.right < 120), dlgPaired: !!dlgCmp, sameSingle: sameCards === 1 }');
+check('interactive panels are grouped below main page: modified panels pair side-by-side & unchanged panels render once', mvPanels.belowMain && mvPanels.noSideCols && mvPanels.revPaired && mvPanels.dlgPaired && mvPanels.sameSingle, mvPanels);
+await ev('smyw.setDiffView("wipe"); return true'); await sleep(150);
+const mvPanelWipe = await ev('const pw = document.querySelector(".cv-ov-wipe[data-wipe-key=\'p1::err-dlg\']"); smyw.setWipePos("p1::err-dlg", 28); const bf = pw && pw.querySelector(".cv-wipe-before > .cv-ov"); const af = pw && pw.querySelector(".cv-wipe-after > .cv-ov"); return { hasWipe: !!pw, pos: pw ? pw.style.getPropertyValue("--wipe") : "", sameH: !!(bf && af && bf.offsetHeight === af.offsetHeight), sameSingle: document.querySelectorAll("#cv-world .cv-ov[data-ov=same-dlg]").length === 1 }');
+check('wipe mode applies independently to modified interactive panels with equalized heights', mvPanelWipe.hasWipe && mvPanelWipe.pos === '28%' && mvPanelWipe.sameH && mvPanelWipe.sameSingle, mvPanelWipe);
+await ev('smyw.setDiffView("split"); return true'); await sleep(150);
+await ev('smyw.setVersions(0, 2); return true'); await sleep(150);
+const mvV0V2 = await ev('const p2b = document.querySelector("#cv-world .cv-frame.cv-before[data-page=p2]"); return { left: smyw.ui.leftVer, right: smyw.ui.rightVer, v1Gone: !document.querySelector("#cv-world [data-id=v1-only-btn]"), p2HasOldBefore: !!(p2b && p2b.textContent.includes("旧设置")), toggleTxt: (document.querySelector("[data-ver-toggle]") || {}).textContent }');
+check('v0→v2 merges first-seen before of newly touched existing page p2 and hides v1-only deleted node', mvV0V2.left === 0 && mvV0V2.right === 2 && mvV0V2.v1Gone && mvV0V2.p2HasOldBefore && /只看本轮 v1→v2/.test(mvV0V2.toggleTxt), mvV0V2);
+await ev('smyw.setVersions(0, 1); return true'); await sleep(150);
+const mvHist = await ev('smyw.setMode("edit"); const editBtn = [...document.querySelectorAll(".seg button")].find(b => b.textContent === "编辑方案"); smyw.op.comment({ kind: "node", page: "p1", id: "v1-only-btn", side: "after" }, "文案", "建议", "历史版本上的批注"); return { mode: smyw.ui.mode, editDisabled: !!(editBtn && editBtn.disabled), banner: !!document.querySelector(".ver-banner"), v1Added: !!document.querySelector("#cv-world [data-id=v1-only-btn][data-side=after].mk-added"), v2Absent: !document.querySelector("#cv-world [data-id=v2-banner]"), where: smyw.state.comments[0] && smyw.state.comments[0].where }');
+check('v0→v1 historical view is read-only with banner and prefixes comments with [v0→v1]', mvHist.mode === 'view' && mvHist.editDisabled && mvHist.banner && mvHist.v1Added && mvHist.v2Absent && /^\[v0→v1\]/.test(mvHist.where || ''), mvHist);
+await ev('document.querySelector(".ver-back").click(); return true'); await sleep(150);
+const mvBack = await ev('const keptCmt = smyw.state.comments.length === 1; smyw.setMode("edit"); smyw.op.edit("p1", "v2-banner", "label", "v2 更新后提示条"); const updated = document.querySelector("#cv-world [data-id=v2-banner][data-side=after]").textContent.includes("v2 更新后提示条"); smyw.op.restore("p1", "v1-only-btn"); const restoredInV1V2 = !!document.querySelector("#cv-world [data-id=v1-only-btn][data-side=after]:not(.mk)"); smyw.op.restore("p1", "move-me__from"); const patchBase = smyw.specPatch().base; return { left: smyw.ui.leftVer, right: smyw.ui.rightVer, keptCmt, updated, restoredInV1V2, patchBase }');
+check('editing & restoring in v1→v2 live-updates view, restores v1-deleted nodes & move ghosts, and keeps comments/patch base v2', mvBack.left === 1 && mvBack.right === 2 && mvBack.keptCmt && mvBack.updated && mvBack.restoredInV1V2 && mvBack.patchBase === 2, mvBack);
+await ev('smyw.setTab("feedback"); return true'); await sleep(100);
+await ev('document.querySelector(".cmt .where").click(); return true'); await sleep(200);
+check('jumping to a historical comment from feedback locates it on the canvas', await ev('return smyw.ui.tab === "canvas" && smyw.ui.sel && smyw.ui.sel.id === "v1-only-btn"'));
 
 console.log('helpdesk-ai example (one real screen, multi-trigger connectors)');
 await open(join(skill, 'examples', 'helpdesk-ai', 'preview.html'));
@@ -184,11 +304,11 @@ await ev('localStorage.clear(); return true');
 const ds = await ev('return { units: smyw.units.map(u => u.id), groups: document.querySelectorAll(".cv-group").length, frames: document.querySelectorAll(".cv-frame").length, cols: ["queue", "detail", "customer"].every(id => !!document.querySelector("#cv-world .cv-frame.cv-after [data-id=" + id + "]")) }');
 check('queue, detail and customer panel are drawn as one screen (split into before/after) with 8 changes', ds.groups === 1 && ds.frames === 2 && ds.units.length === 8 && ds.cols, ds);
 await ev('smyw.setDiffMode(true); return 1');
-const panel = await ev('await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); return { menu: !!document.querySelector("#cv-links path.cv-link[data-from=t-assign][data-to=assign-menu]"), revealed: !!document.querySelector("#cv-world .cv-rev[data-ov=c-sim-1-detail]"), slot: !!document.querySelector("#cv-world .cv-frame.cv-after .wf-slot[data-id=c-sim-1-detail]"), revLink: !!document.querySelector("#cv-links path.cv-link[data-from=c-sim-1][data-to=c-sim-1-detail]"), nested: !!document.querySelector("#cv-world .cv-rev[data-ov=as-3-sub]") }');
-check('secondary menus and click-revealed content are separate panels, linked to their trigger in diff mode', panel.menu && panel.revealed && panel.slot && panel.revLink && panel.nested, panel);
+const panel = await ev('await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); return { areaBelow: !!document.querySelector(".cv-group[data-page=inbox] > .cv-panels-area"), menu: !!document.querySelector("#cv-world .cv-ov[data-ov=assign-menu]"), revealed: !!document.querySelector("#cv-world .cv-rev[data-ov=c-sim-1-detail]"), slot: !!document.querySelector("#cv-world .cv-frame.cv-after .wf-slot[data-id=c-sim-1-detail]"), nested: !!document.querySelector("#cv-world .cv-rev[data-ov=as-3-sub]"), noSpaghetti: document.querySelectorAll("#cv-links path.cv-link").length === 0 }');
+check('secondary menus and click-revealed content render in paired tray below page without unasked spaghetti links', panel.areaBelow && panel.menu && panel.revealed && panel.slot && panel.nested && panel.noSpaghetti, panel);
 await ev('smyw.ui.showLinks = true; smyw.render(); return 1');
-const link = await ev('await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); const p = document.querySelector("#cv-links path.cv-link[data-from=ai-edit]"); if (!p) return null; const t = document.querySelector("#cv-world .cv-frame.cv-after [data-id=ai-edit]").getBoundingClientRect(); const o = document.querySelector("#cv-world .cv-ov[data-ov=ai-drawer]").getBoundingClientRect(); const pr = p.getBoundingClientRect(); return { to: p.dataset.to, startsNearTrigger: Math.abs(pr.left - t.right) < 12, endsAtOverlay: Math.abs(pr.right - o.left) < 12, toDrawer: document.querySelectorAll("#cv-links path[data-to=ai-drawer]").length, removedDashed: !!document.querySelector("#cv-links path.dashed[data-to=quick-modal]"), moveLink: !!document.querySelector("#cv-links path[data-diff-link=move][data-from=t-resolve]") }');
-check('curved connectors: every trigger links to its overlay, removed ones dashed, and cross-frame move links render', link && link.to === 'ai-drawer' && link.startsNearTrigger && link.endsAtOverlay && link.toDrawer === 2 && link.removedDashed && link.moveLink, link);
+const link = await ev('await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); const p = document.querySelector("#cv-links path.cv-link[data-from=ai-edit]"); if (!p) return null; const t = document.querySelector("#cv-world .cv-frame.cv-after [data-id=ai-edit]").getBoundingClientRect(); const o = document.querySelector("#cv-world .cv-ov[data-ov=ai-drawer]").getBoundingClientRect(); const pr = p.getBoundingClientRect(); return { to: p.dataset.to, connectsDown: pr.top <= t.bottom + 12 && pr.bottom >= o.top - 12, toDrawer: document.querySelectorAll("#cv-links path[data-to=ai-drawer]").length, removedDashed: !!document.querySelector("#cv-links path.dashed[data-to=quick-modal]"), moveLink: !!document.querySelector("#cv-links path[data-diff-link=move][data-from=t-resolve]") }');
+check('curved connectors: showLinks draws trigger-to-panel connectors, removed dashed, and cross-frame move links', link && link.to === 'ai-drawer' && link.connectsDown && link.toDrawer === 2 && link.removedDashed && link.moveLink, link);
 await shot('07b-connector');
 await ev('smyw.ui.showLinks = false; smyw.render(); return 1');
 

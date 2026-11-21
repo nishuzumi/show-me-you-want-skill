@@ -108,13 +108,31 @@ function btn(label, onclick, cls, title) { return h('button', { class: cls || nu
 // ------------------------------------------------------------------ state
 const RAW = document.getElementById('smyw-spec').textContent;
 const BASE = JSON.parse(RAW);
+const VERSIONS = (() => {
+  try {
+    const el = document.getElementById('smyw-versions');
+    if (!el) return [];
+    const arr = JSON.parse(el.textContent);
+    return Array.isArray(arr) ? arr.filter((v) => v && typeof v === 'object' && v.spec) : [];
+  } catch (e) { return []; }
+})();
+const LATEST_VER = Number(BASE.version) || (VERSIONS.length ? Number(VERSIONS[VERSIONS.length - 1].version) : 1);
+const PREV_VER = VERSIONS.length >= 3 ? Number(VERSIONS[VERSIONS.length - 2].version) : 0;
+const HAS_MULTI_VER = VERSIONS.length > 2;
+function verByNum(n) { return VERSIONS.find((v) => Number(v.version) === Number(n)) || null; }
+function versionSnap(ver) { const v = verByNum(ver); return v ? v.spec : null; }
+
 const KEY = 'smyw:' + hash(RAW);
 let S = loadState() || freshState();
+let CUR = S.spec;
 let undoStack = [];
 let redoStack = [];
 const uiSaved = readJSON(KEY + ':ui') || {};
-const ui = { tab: ['canvas', 'flows', 'backend', 'feedback'].indexOf(uiSaved.tab) >= 0 ? uiSaved.tab : 'canvas', page: uiSaved.page, diffView: ['split', 'wipe'].indexOf(uiSaved.diffView) >= 0 ? uiSaved.diffView : 'split', diffMode: uiSaved.diffMode === true, showPins: uiSaved.showPins !== false, wipePos: {}, preview: { vis: {}, st: {}, checks: {}, selects: {} }, mode: 'view', sel: null, unit: null, cam: null, showLinks: false, play: null, showFn: false, showComp: false, fade: false, space: false, panMoved: false, overlayOpen: null, includeSpec: false, confirmReset: false, toast: null };
-if (!pageById(ui.page)) { const first = S.spec.pages.find((p) => pageStatus(p) !== 'unchanged') || S.spec.pages[0]; ui.page = first ? first.id : null; }
+const initLeft = HAS_MULTI_VER && uiSaved.leftVer != null && verByNum(uiSaved.leftVer) ? Number(uiSaved.leftVer) : (HAS_MULTI_VER ? PREV_VER : 0);
+const initRight = HAS_MULTI_VER && uiSaved.rightVer != null && verByNum(uiSaved.rightVer) ? Number(uiSaved.rightVer) : LATEST_VER;
+const ui = { tab: ['canvas', 'flows', 'backend', 'feedback'].indexOf(uiSaved.tab) >= 0 ? uiSaved.tab : 'canvas', page: uiSaved.page, leftVer: initLeft, rightVer: initRight, diffView: ['split', 'wipe'].indexOf(uiSaved.diffView) >= 0 ? uiSaved.diffView : 'split', diffMode: uiSaved.diffMode === true, showPins: uiSaved.showPins !== false, wipePos: {}, preview: { vis: {}, st: {}, checks: {}, selects: {} }, mode: 'view', sel: null, unit: null, cam: null, showLinks: false, play: null, showFn: false, showComp: false, fade: false, space: false, panMoved: false, overlayOpen: null, includeSpec: false, confirmReset: false, toast: null };
+syncViewSpec();
+if (!pageById(ui.page)) { const first = CUR.pages.find((p) => pageStatus(p) !== 'unchanged') || CUR.pages[0]; ui.page = first ? first.id : null; }
 let drag = null;
 let dropEl = null;
 let toastTimer = 0;
@@ -122,7 +140,270 @@ let hoverKey = null;
 
 function freshState() { return { spec: normalize(clone(BASE)), ops: [], comments: [], global: { tags: [], text: '', ref: '' }, answers: {}, approved: false, seq: 0 }; }
 function loadState() { const s = readJSON(KEY); return s && s.spec && Array.isArray(s.ops) && Array.isArray(s.comments) ? s : null; }
-function save() { writeJSON(KEY, S); writeJSON(KEY + ':ui', { tab: ui.tab, page: ui.page, diffView: ui.diffView, diffMode: ui.diffMode, showPins: ui.showPins }); }
+function save() { writeJSON(KEY, S); writeJSON(KEY + ':ui', { tab: ui.tab, page: ui.page, leftVer: ui.leftVer, rightVer: ui.rightVer, diffView: ui.diffView, diffMode: ui.diffMode, showPins: ui.showPins }); }
+
+// ------------------------------------------------------------------ multi-version diff engine
+function isHistoryView() { return HAS_MULTI_VER && ui.rightVer !== LATEST_VER; }
+function isFullBaseView() { return ui.leftVer === 0 && ui.rightVer === LATEST_VER; }
+function verShort(v) {
+  v = Number(v);
+  if (v === 0) return 'v0 现状';
+  if (v === LATEST_VER && HAS_MULTI_VER) return 'v' + v + ' 最新';
+  return 'v' + v;
+}
+function verOptLabel(entry) {
+  const v = Number(entry.version);
+  const base = v === 0 ? 'v0 现状' : ('v' + v + (v === LATEST_VER ? ' 最新' : ''));
+  const note = v === 0 ? '' : (entry.note ? ' · ' + short(entry.note, 22) : '');
+  return base + note;
+}
+function sideLabel(side) {
+  if (!HAS_MULTI_VER) return side === 'before' ? '改动前' : '改动后';
+  return side === 'before' ? verShort(ui.leftVer) : verShort(ui.rightVer);
+}
+
+function extractItemArr(arr, side) {
+  if (!Array.isArray(arr)) return undefined;
+  const out = [];
+  arr.forEach((x) => {
+    if (x && typeof x === 'object') {
+      if (side === 'before' && x.change === 'added') return;
+      if (side === 'after' && x.change === 'removed') return;
+      const lbl = side === 'before' && x.before != null ? (typeof x.before === 'object' ? x.before.label : x.before) : x.label;
+      if (lbl != null) out.push(String(lbl));
+    } else if (x != null) out.push(String(x));
+  });
+  return out;
+}
+function extractObj(o, side, childKeys) {
+  if (!o || typeof o !== 'object') return null;
+  if (side === 'before' && o.change === 'added') return null;
+  if (side === 'after' && o.change === 'removed') return null;
+  const out = {};
+  const skip = new Set(['change', 'before', 'movedFrom', 'movedTo', '_um'].concat(childKeys));
+  Object.keys(o).forEach((k) => {
+    if (skip.has(k)) return;
+    if (side === 'before' && k === 'note') return;
+    if (k === 'items' && childKeys.indexOf('items') < 0) { out.items = extractItemArr(o.items, side); return; }
+    if (k === 'columns') { out.columns = extractItemArr(o.columns, side); return; }
+    out[k] = clone(o[k]);
+  });
+  if (side === 'before' && o.before && typeof o.before === 'object') {
+    Object.keys(o.before).forEach((k) => {
+      const bv = o.before[k];
+      if (isEmpty(bv)) delete out[k];
+      else if (k === 'items' && childKeys.indexOf('items') < 0) out.items = extractItemArr(bv, side);
+      else if (k === 'columns') out.columns = extractItemArr(bv, side);
+      else out[k] = clone(bv);
+    });
+  }
+  childKeys.forEach((ck) => {
+    if (ck === 'root') out.root = o.root ? extractObj(o.root, side, ['children']) : { type: 'page', children: [] };
+    else if (Array.isArray(o[ck])) {
+      const subKeys = ck === 'children' || ck === 'overlays' ? ['children'] : [];
+      const kids = o[ck].map((c) => extractObj(c, side, subKeys)).filter(Boolean);
+      if (kids.length || ck !== 'children') out[ck] = kids;
+    }
+  });
+  return out;
+}
+function extractAfter(sp) {
+  return {
+    title: sp.title || '未命名变更', version: Number(sp.version) || 1, stage: sp.stage || 'prototype',
+    summary: sp.summary, versionNote: sp.versionNote, changes: clone(sp.changes || []), questions: clone(sp.questions || []),
+    pages: (sp.pages || []).map((p) => extractObj(p, 'after', ['root', 'overlays'])).filter(Boolean),
+    flows: (sp.flows || []).map((f) => extractObj(f, 'after', ['steps'])).filter(Boolean),
+    backend: (sp.backend || []).map((m) => extractObj(m, 'after', ['items'])).filter(Boolean)
+  };
+}
+
+function diffItemList(lRaw, rRaw) {
+  const L = (lRaw || []).map(itemText), R = (rRaw || []).map(itemText);
+  if (same(L, R)) return null;
+  const lSet = new Set(L), rSet = new Set(R);
+  const out = [];
+  let li = 0;
+  R.forEach((rx) => {
+    if (lSet.has(rx)) {
+      while (li < L.length && L[li] !== rx) {
+        if (!rSet.has(L[li])) out.push({ label: L[li], change: 'removed' });
+        li++;
+      }
+      if (li < L.length && L[li] === rx) li++;
+      out.push(rx);
+    } else {
+      out.push({ label: rx, change: 'added' });
+    }
+  });
+  while (li < L.length) {
+    if (!rSet.has(L[li])) out.push({ label: L[li], change: 'removed' });
+    li++;
+  }
+  return out;
+}
+function mergeLists(lArr, rArr, onSame, onAdded, onRemoved) {
+  const L = Array.isArray(lArr) ? lArr : [];
+  const R = Array.isArray(rArr) ? rArr : [];
+  const lMap = new Map(), rMap = new Map();
+  L.forEach((x) => { if (x && x.id != null) lMap.set(String(x.id), x); });
+  R.forEach((x) => { if (x && x.id != null) rMap.set(String(x.id), x); });
+  const out = [];
+  let li = 0;
+  R.forEach((rx) => {
+    const id = rx && rx.id != null ? String(rx.id) : null;
+    if (id && lMap.has(id)) {
+      while (li < L.length) {
+        const lx = L[li];
+        const lid = lx && lx.id != null ? String(lx.id) : null;
+        if (lid === id) { li++; break; }
+        if (!lid || !rMap.has(lid)) { const rm = onRemoved(lx); if (rm) out.push(rm); }
+        li++;
+      }
+      const m = onSame(lMap.get(id), rx); if (m) out.push(m);
+    } else {
+      const ad = onAdded(rx); if (ad) out.push(ad);
+    }
+  });
+  while (li < L.length) {
+    const lx = L[li++];
+    const lid = lx && lx.id != null ? String(lx.id) : null;
+    if (!lid || !rMap.has(lid)) { const rm = onRemoved(lx); if (rm) out.push(rm); }
+  }
+  return out;
+}
+function cloneWithChange(o, change, childKeys, suffix) {
+  const c = clone(o);
+  const walk = (x, isTop) => {
+    if (!x || typeof x !== 'object') return;
+    if (suffix && x.id != null) x.id = String(x.id) + suffix;
+    x.change = isTop ? change : 'unchanged';
+    delete x.before; delete x.movedFrom; delete x.movedTo; delete x._um;
+    if (isTop && change === 'removed') delete x.note;
+    childKeys.forEach((ck) => {
+      if (ck === 'root' && x.root) walk(x.root, false);
+      else if (Array.isArray(x[ck])) x[ck].forEach((ch) => walk(ch, false));
+    });
+  };
+  walk(c, true);
+  return c;
+}
+function diffFields(lo, ro, skipSet, itemKeys, diffNote) {
+  const out = clone(ro);
+  const before = {};
+  let changed = false;
+  const keys = new Set(Object.keys(lo).concat(Object.keys(ro)));
+  keys.forEach((k) => {
+    if (skipSet.has(k)) return;
+    if (k === 'note' && !diffNote) return;
+    if (itemKeys && itemKeys.has(k)) {
+      const merged = diffItemList(lo[k], ro[k]);
+      if (merged) { out[k] = merged; changed = true; }
+      return;
+    }
+    const lv = isEmpty(lo[k]) ? null : lo[k];
+    const rv = isEmpty(ro[k]) ? null : ro[k];
+    if (!same(lv, rv)) { before[k] = clone(lv); changed = true; }
+  });
+  if (!diffNote) {
+    if (changed || (ro.note && ro.note !== lo.note)) { if (ro.note) out.note = ro.note; }
+    else delete out.note;
+  }
+  if (Object.keys(before).length) out.before = before; else delete out.before;
+  out.change = changed ? 'modified' : 'unchanged';
+  return out;
+}
+function indexPageNodes(p) {
+  const idx = new Map();
+  const walk = (n, parId, listKey) => {
+    if (!n || typeof n !== 'object') return;
+    if (n.id != null) idx.set(String(n.id), { n: n, parId: parId, listKey: listKey });
+    (n.children || []).forEach((c) => walk(c, n.id != null ? String(n.id) : null, 'children'));
+  };
+  if (p && p.root) walk(p.root, null, 'root');
+  if (p && Array.isArray(p.overlays)) p.overlays.forEach((o) => walk(o, null, 'overlays'));
+  return idx;
+}
+function diffPage(lp, rp) {
+  const lIdx = indexPageNodes(lp), rIdx = indexPageNodes(rp);
+  const NODE_SKIP = new Set(['id', 'children', 'change', 'before', 'movedFrom', 'movedTo', '_um']);
+  const ITEM_KEYS = new Set(['items', 'columns']);
+  const diffNode = (ln, rn) => {
+    const out = diffFields(ln, rn, NODE_SKIP, ITEM_KEYS, false);
+    const lKids = ln.children || [], rKids = rn.children || [];
+    if (lKids.length || rKids.length) {
+      out.children = diffNodeList(lKids, rKids);
+    } else delete out.children;
+    return out;
+  };
+  const diffNodeList = (lKids, rKids) => mergeLists(
+    lKids, rKids,
+    (ln, rn) => diffNode(ln, rn),
+    (rn) => {
+      const id = rn.id != null ? String(rn.id) : null;
+      const ad = cloneWithChange(rn, 'added', ['children'], '');
+      if (id && lIdx.has(id)) ad.movedFrom = id + '__from';
+      return ad;
+    },
+    (ln) => {
+      const id = ln.id != null ? String(ln.id) : null;
+      if (id && rIdx.has(id)) {
+        const g = cloneWithChange(ln, 'removed', ['children'], '__from');
+        g.movedTo = id;
+        return g;
+      }
+      return cloneWithChange(ln, 'removed', ['children'], '');
+    }
+  );
+  const PAGE_SKIP = new Set(['id', 'root', 'overlays', 'change', 'before', 'movedFrom', 'movedTo', '_um']);
+  const out = diffFields(lp, rp, PAGE_SKIP, null, false);
+  out.root = diffNode(lp.root || { type: 'page', children: [] }, rp.root || { type: 'page', children: [] });
+  out.overlays = diffNodeList(lp.overlays || [], rp.overlays || []);
+  return out;
+}
+function diffSpecs(L, R) {
+  const STEP_SKIP = new Set(['id', 'change', 'before', 'movedFrom', 'movedTo', '_um']);
+  const FLOW_SKIP = new Set(['id', 'steps', 'change', 'before', 'movedFrom', 'movedTo', '_um']);
+  const MOD_SKIP = new Set(['id', 'items', 'change', 'before', 'movedFrom', 'movedTo', '_um']);
+  const BE_SKIP = new Set(['id', 'change', 'before', 'movedFrom', 'movedTo', '_um']);
+  return {
+    title: R.title || L.title || S.spec.title,
+    version: R.version,
+    stage: R.stage || S.spec.stage,
+    summary: R.summary || '',
+    versionNote: R.versionNote || '',
+    changes: clone(R.changes || []),
+    questions: ui.rightVer === LATEST_VER ? clone(S.spec.questions || []) : clone(R.questions || []),
+    pages: mergeLists(L.pages, R.pages, diffPage, (rp) => cloneWithChange(rp, 'added', ['root', 'overlays'], ''), (lp) => cloneWithChange(lp, 'removed', ['root', 'overlays'], '')),
+    flows: mergeLists(L.flows, R.flows, (lf, rf) => {
+      const out = diffFields(lf, rf, FLOW_SKIP, null, false);
+      out.steps = mergeLists(lf.steps, rf.steps, (ls, rs) => diffFields(ls, rs, STEP_SKIP, null, false), (rs) => cloneWithChange(rs, 'added', [], ''), (ls) => cloneWithChange(ls, 'removed', [], ''));
+      return out;
+    }, (rf) => cloneWithChange(rf, 'added', ['steps'], ''), (lf) => cloneWithChange(lf, 'removed', ['steps'], '')),
+    backend: mergeLists(L.backend, R.backend, (lm, rm) => {
+      const out = diffFields(lm, rm, MOD_SKIP, null, true);
+      out.items = mergeLists(lm.items, rm.items, (li, ri) => diffFields(li, ri, BE_SKIP, null, true), (ri) => cloneWithChange(ri, 'added', [], ''), (li) => cloneWithChange(li, 'removed', [], ''));
+      return out;
+    }, (rm) => cloneWithChange(rm, 'added', ['items'], ''), (lm) => cloneWithChange(lm, 'removed', ['items'], ''))
+  };
+}
+function syncViewSpec() {
+  if (!HAS_MULTI_VER || isFullBaseView()) { CUR = S.spec; return; }
+  const L = versionSnap(ui.leftVer);
+  const R = ui.rightVer === LATEST_VER ? extractAfter(S.spec) : versionSnap(ui.rightVer);
+  if (!L || !R) { CUR = S.spec; return; }
+  CUR = normalize(diffSpecs(L, R));
+}
+function setVersions(l, r) {
+  if (!HAS_MULTI_VER) return;
+  const ln = Number(l), rn = Number(r);
+  if (!verByNum(ln) || !verByNum(rn)) return;
+  ui.leftVer = ln; ui.rightVer = rn;
+  ui.sel = null; ui.unit = null; ui.cam = null; hoverKey = null; ui.overlayOpen = null;
+  if (isHistoryView() && ui.mode === 'edit') ui.mode = 'view';
+  syncViewSpec();
+  validateSel();
+  save(); render();
+}
 
 function normalize(spec) {
   if (!spec || typeof spec !== 'object' || Array.isArray(spec)) spec = {};
@@ -142,16 +423,19 @@ function normalize(spec) {
 }
 
 // ------------------------------------------------------------------ model helpers
-function pageById(id) { return S.spec.pages.find((p) => p.id === id); }
-function flowById(id) { return S.spec.flows.find((f) => f.id === id); }
-function curPage() { return pageById(ui.page) || S.spec.pages[0]; }
+function pageById(id) { return CUR.pages.find((p) => p.id === id); }
+function flowById(id) { return CUR.flows.find((f) => f.id === id); }
+function curPage() { return pageById(ui.page) || CUR.pages[0]; }
+function ePageById(id) { return S.spec.pages.find((p) => p.id === id); }
+function eFlowById(id) { return S.spec.flows.find((f) => f.id === id); }
+function eFindBe(id) { for (const m of S.spec.backend) { if (m.id === id) return { m: m, item: null }; const it = m.items.find((i) => i.id === id); if (it) return { m: m, item: it }; } return null; }
 function entries(p) { const out = []; const walk = (n, par, list) => { out.push({ n: n, par: par, list: list }); (n.children || []).forEach((c) => walk(c, n, n.children)); }; walk(p.root, null, null); p.overlays.forEach((o) => walk(o, null, p.overlays)); return out; }
 function findNode(p, id) { return entries(p).find((e) => e.n.id === id) || null; }
 function contains(a, b) { return a === b || (a.children || []).some((c) => contains(c, b)); }
 function isCont(n) { return CONTAINER.has(bt(n.type)) || !!(n.children && n.children.length); }
 function afterVisibleIds(p) { const s = new Set(); const walk = (n) => { if (n.change === 'removed') return; s.add(n.id); (n.children || []).forEach(walk); }; walk(p.root); p.overlays.forEach(walk); return s; }
 function parentChain(p, id) { let chain = null; const walk = (n, path) => { if (n.id === id) { chain = path; return true; } return (n.children || []).some((c) => walk(c, path.concat([n]))); }; if (!walk(p.root, [])) p.overlays.some((o) => walk(o, [])); return chain || []; }
-function findBe(id) { for (const m of S.spec.backend) { if (m.id === id) return { m: m, item: null }; const it = m.items.find((i) => i.id === id); if (it) return { m: m, item: it }; } return null; }
+function findBe(id) { for (const m of CUR.backend) { if (m.id === id) return { m: m, item: null }; const it = m.items.find((i) => i.id === id); if (it) return { m: m, item: it }; } return null; }
 function visible(o, side) { return !(side === 'before' && o.change === 'added') && !(side === 'after' && o.change === 'removed'); }
 function view(o, side) {
   if (side !== 'before' || !o.before) return o;
@@ -209,7 +493,7 @@ const IA_SHORT = { open: '打开', close: '关闭', navigate: '跳转', toggle: 
 function nodeOn(n) { return Array.isArray(n && n.on) ? n.on.filter((x) => x && typeof x === 'object').map((x) => Object.assign({}, x, { action: x.action || x.do || 'open' })) : []; }
 function interactionsOf(p, n, side) {
   const out = nodeOn(n);
-  S.spec.pages.forEach((q) => q.overlays.forEach((x) => {
+  CUR.pages.forEach((q) => q.overlays.forEach((x) => {
     if (x === n || !visible(x, side) || !trigList(view(x, side)).includes(n.id)) return;
     if (!out.some((i) => i.action === 'open' && i.target === x.id)) out.push({ action: 'open', target: x.id });
   }));
@@ -253,7 +537,7 @@ function isRevealed(n, p) {
   if (p && isTabPanel(p, n)) return false;
   return showersOf(n.id).length > 0;
 }
-function showersOf(id) { const out = []; S.spec.pages.forEach((p) => entries(p).forEach((e) => { if (nodeOn(e.n).some((i) => i.target === id && /^(toggle|show)$/.test(i.action))) out.push(e.n); })); return out; }
+function showersOf(id) { const out = []; CUR.pages.forEach((p) => entries(p).forEach((e) => { if (nodeOn(e.n).some((i) => i.target === id && /^(toggle|show)$/.test(i.action))) out.push(e.n); })); return out; }
 function iaTargetName(i) {
   if (i.action === 'navigate') { const q = pageById(i.target); return q ? '页面「' + pageName(q) + '」' : '#' + i.target; }
   if (!i.target) return i.action === 'close' ? '所在的弹层' : '';
@@ -295,16 +579,16 @@ function fmtVal(field, v) {
 function mutate(fn) {
   const snap = JSON.stringify(S);
   let op;
-  try { op = fn(); } catch (err) { S = JSON.parse(snap); console.error(err); toast('操作失败：' + err.message, true); return false; }
-  if (op === false) { S = JSON.parse(snap); return false; }
+  try { op = fn(); } catch (err) { S = JSON.parse(snap); syncViewSpec(); console.error(err); toast('操作失败：' + err.message, true); return false; }
+  if (op === false) { S = JSON.parse(snap); syncViewSpec(); return false; }
   undoStack.push(snap); if (undoStack.length > 300) undoStack.shift();
   redoStack = [];
   if (op && op.desc) { op.ts = new Date().toISOString(); S.ops.push(op); }
-  save(); validateSel(); render();
+  syncViewSpec(); save(); validateSel(); render();
   return true;
 }
-function undo() { if (!undoStack.length) return; redoStack.push(JSON.stringify(S)); S = JSON.parse(undoStack.pop()); save(); validateSel(); render(); }
-function redo() { if (!redoStack.length) return; undoStack.push(JSON.stringify(S)); S = JSON.parse(redoStack.pop()); save(); validateSel(); render(); }
+function undo() { if (!undoStack.length) return; redoStack.push(JSON.stringify(S)); S = JSON.parse(undoStack.pop()); syncViewSpec(); save(); validateSel(); render(); }
+function redo() { if (!redoStack.length) return; undoStack.push(JSON.stringify(S)); S = JSON.parse(redoStack.pop()); syncViewSpec(); save(); validateSel(); render(); }
 function selectNode(pid, id) { ui.sel = { kind: 'node', page: pid, id: id, side: 'after' }; }
 function pfx(p) { return '页面「' + pageName(p) + '」：'; }
 
@@ -327,7 +611,7 @@ function makeNode(type) {
   return n;
 }
 function opMove(pid, id, dest) {
-  const p = pageById(pid); if (!p) return false;
+  const p = ePageById(pid); if (!p) return false;
   const src = findNode(p, id); if (!src || !src.list) return false;
   let tgt = null;
   if (!dest.overlays) { tgt = findNode(p, dest.targetId); if (!tgt || contains(src.n, tgt.n)) return false; }
@@ -347,7 +631,7 @@ function opMove(pid, id, dest) {
   return { type: 'move', page: pid, node: moved.id, origin: id, dest: dest, desc: pfx(p) + '把' + name + '从' + from + '移到' + to };
 }
 function opSibling(pid, id, dir) {
-  const p = pageById(pid); const e = p && findNode(p, id); if (!e || !e.list) return false;
+  const p = ePageById(pid); const e = p && findNode(p, id); if (!e || !e.list) return false;
   const vis = afterVisibleIds(p);
   const sibs = e.list.filter((x) => vis.has(x.id));
   const j = sibs.indexOf(e.n) + dir;
@@ -358,7 +642,7 @@ function opSibling(pid, id, dir) {
   return op;
 }
 function opAdd(pid, type, dest) {
-  const p = pageById(pid); if (!p) return false;
+  const p = ePageById(pid); if (!p) return false;
   const n = makeNode(type);
   let where;
   if (OVERLAY.has(type) || dest.overlays) { p.overlays.push(n); where = '弹层区'; }
@@ -368,7 +652,7 @@ function opAdd(pid, type, dest) {
   return { type: 'add', page: pid, node: n.id, nodeType: type, desc: pfx(p) + '新增' + tname(type) + ' #' + n.id + '，放在' + where + (OVERLAY.has(type) ? '（需要指定由哪个按钮触发）' : '') };
 }
 function opDelete(pid, id) {
-  const p = pageById(pid); const e = p && findNode(p, id); if (!e || !e.list) return false;
+  const p = ePageById(pid); const e = p && findNode(p, id); if (!e || !e.list) return false;
   const name = ref(e.n);
   const ids = new Set(); (function walk(n) { ids.add(n.id); (n.children || []).forEach(walk); })(e.n);
   if (e.n.change === 'added') {
@@ -380,14 +664,61 @@ function opDelete(pid, id) {
   ui.sel = null;
   return { type: 'delete', page: pid, node: id, desc: pfx(p) + '删除' + name };
 }
+function restoreFromSnap(srcNode) {
+  const taken = allIds();
+  const c = clone(srcNode);
+  const walk = (x, isTop) => {
+    if (!x || typeof x !== 'object') return;
+    if (!x.id || taken.has(String(x.id))) x.id = newId();
+    taken.add(String(x.id));
+    x.change = isTop ? 'added' : 'unchanged';
+    delete x.before; delete x.movedFrom; delete x.movedTo; delete x._um;
+    (x.children || []).forEach((ch) => walk(ch, false));
+  };
+  walk(c, true);
+  return c;
+}
 function opRestore(pid, id) {
-  const p = pageById(pid); const e = p && findNode(p, id); if (!e || e.n.change !== 'removed') return false;
-  if (e.n.movedTo) { const m = findNode(p, e.n.movedTo); if (m && m.list && m.n.change === 'added') m.list.splice(m.list.indexOf(m.n), 1); delete e.n.movedTo; }
-  e.n.change = e.n.before ? 'modified' : 'unchanged';
-  return { type: 'restore', page: pid, node: id, desc: pfx(p) + '恢复' + ref(e.n) + '（取消删除/移动）' };
+  const p = ePageById(pid); if (!p) return false;
+  // Virtual move ghost (id + '__from') from multi-version diff: move the real node back to its leftVer container.
+  if (String(id).endsWith('__from')) {
+    const realId = String(id).slice(0, -6);
+    const cur = findNode(p, realId);
+    const L = versionSnap(ui.leftVer);
+    const lp = L && (L.pages || []).find((x) => x.id === pid);
+    const old = lp && findNode(lp, realId);
+    if (!cur || !old) return false;
+    if (cur.n.movedFrom) {
+      const g = findNode(p, cur.n.movedFrom);
+      if (g && g.n.change === 'removed') return opRestore(pid, g.n.id);
+    }
+    const dest = old.list === lp.overlays ? { overlays: true } : (old.par && findNode(p, old.par.id) ? { targetId: old.par.id, pos: 'inside' } : { targetId: p.root.id, pos: 'inside' });
+    const op = opMove(pid, realId, dest);
+    if (op) op.desc = pfx(p) + '撤销移动：把' + ref(cur.n) + '放回 v' + ui.leftVer + ' 的原位置';
+    return op;
+  }
+  const e = findNode(p, id);
+  if (e && e.n.change === 'removed') {
+    if (e.n.movedTo) { const m = findNode(p, e.n.movedTo); if (m && m.list && m.n.change === 'added') m.list.splice(m.list.indexOf(m.n), 1); delete e.n.movedTo; }
+    e.n.change = e.n.before ? 'modified' : 'unchanged';
+    return { type: 'restore', page: pid, node: id, desc: pfx(p) + '恢复' + ref(e.n) + '（取消删除/移动）' };
+  }
+  // Deleted between leftVer (>0) and latest: copy back from leftVer snapshot.
+  const L = versionSnap(ui.leftVer);
+  const lp = L && (L.pages || []).find((x) => x.id === pid);
+  const old = lp && findNode(lp, id);
+  if (!old) return false;
+  const restored = restoreFromSnap(old.n);
+  const oldIdx = old.list ? old.list.indexOf(old.n) : -1;
+  let list = p.root.children || (p.root.children = []);
+  if (old.list === lp.overlays) list = p.overlays;
+  else if (old.par) { const parE = findNode(p, old.par.id); if (parE) list = parE.n.children || (parE.n.children = []); }
+  list.splice(oldIdx >= 0 ? Math.min(oldIdx, list.length) : list.length, 0, restored);
+  selectNode(pid, restored.id);
+  return { type: 'restore', page: pid, node: restored.id, desc: pfx(p) + '从 v' + ui.leftVer + ' 恢复' + ref(restored) };
 }
 function opDuplicate(pid, id) {
-  const p = pageById(pid); const e = p && findNode(p, id); if (!e || !e.list) return false;
+  const p = ePageById(pid); const e = p && findNode(p, id); if (!e || !e.list) return false;
   const c = afterClone(e.n, {}); delete c.movedFrom;
   e.list.splice(e.list.indexOf(e.n) + 1, 0, c);
   selectNode(pid, c.id);
@@ -395,7 +726,7 @@ function opDuplicate(pid, id) {
 }
 /* Inline element -> overlay (dialog / drawer / menu / popover) opened by a new button at the old spot. */
 function opConvert(pid, id, kind) {
-  const p = pageById(pid); const e = p && findNode(p, id); if (!e || !e.list || e.list === p.overlays) return false;
+  const p = ePageById(pid); const e = p && findNode(p, id); if (!e || !e.list || e.list === p.overlays) return false;
   const label = e.n.label || tname(e.n.type);
   const name = ref(e.n);
   const kindName = kind === 'dialog' ? '弹窗' : tname(kind);
@@ -433,11 +764,20 @@ function opDeletePage(pid) {
   ui.sel = null;
   return { type: 'delete-page', page: pid, desc: '删除页面「' + pageName(p) + '」#' + pid };
 }
-function opRestorePage(pid) { const p = pageById(pid); if (!p || p.change !== 'removed') return false; p.change = p.before ? 'modified' : 'unchanged'; return { type: 'restore-page', page: pid, desc: '恢复页面「' + pageName(p) + '」' }; }
+function opRestorePage(pid) {
+  const p = ePageById(pid);
+  if (p && p.change === 'removed') { p.change = p.before ? 'modified' : 'unchanged'; return { type: 'restore-page', page: pid, desc: '恢复页面「' + pageName(p) + '」' }; }
+  const L = versionSnap(ui.leftVer);
+  const lp = L && (L.pages || []).find((x) => x.id === pid);
+  if (!lp) return false;
+  const rp = cloneWithChange(lp, 'added', ['root', 'overlays'], '');
+  S.spec.pages.push(rp); ui.page = rp.id;
+  return { type: 'restore-page', page: rp.id, desc: '从 v' + ui.leftVer + ' 恢复页面「' + pageName(rp) + '」' };
+}
 function opFlowAdd() { const f = { id: newId(), name: '新流程', change: 'added', steps: [] }; S.spec.flows.push(f); ui.sel = { kind: 'flow', id: f.id }; return { type: 'add-flow', flow: f.id, desc: '新增流程「新流程」#' + f.id }; }
 function opFlowDelete(fid) { const i = S.spec.flows.findIndex((f) => f.id === fid); if (i < 0) return false; const f = S.spec.flows[i]; if (f.change === 'added') S.spec.flows.splice(i, 1); else { f.change = 'removed'; delete f._um; } ui.sel = null; return { type: 'delete-flow', flow: fid, desc: '删除流程「' + f.name + '」' }; }
 function opStepAdd(fid, afterId) {
-  const f = flowById(fid); if (!f) return false;
+  const f = eFlowById(fid); if (!f) return false;
   const prev = afterId ? f.steps.find((s) => s.id === afterId) : null;
   const s = { id: newId(), actor: prev ? prev.actor : 'frontend', text: '新步骤', change: 'added' };
   if (prev) f.steps.splice(f.steps.indexOf(prev) + 1, 0, s); else f.steps.push(s);
@@ -445,19 +785,29 @@ function opStepAdd(fid, afterId) {
   return { type: 'add-step', flow: fid, step: s.id, desc: '流程「' + f.name + '」：' + (prev ? '在步骤' + stepLabel(prev) + '后' : '末尾') + '新增步骤 #' + s.id };
 }
 function opStepDelete(fid, id) {
-  const f = flowById(fid); const s = f && f.steps.find((x) => x.id === id); if (!s) return false;
+  const f = eFlowById(fid); const s = f && f.steps.find((x) => x.id === id); if (!s) return false;
   if (s.change === 'added') { f.steps.splice(f.steps.indexOf(s), 1); if (s.movedFrom) { const g = f.steps.find((x) => x.id === s.movedFrom); if (g) delete g.movedTo; } } else { s.change = 'removed'; delete s._um; }
   ui.sel = null;
   return { type: 'delete-step', flow: fid, step: id, desc: '流程「' + f.name + '」：删除步骤' + stepLabel(s) + ' #' + id };
 }
 function opStepRestore(fid, id) {
-  const f = flowById(fid); const s = f && f.steps.find((x) => x.id === id); if (!s || s.change !== 'removed') return false;
-  if (s.movedTo) { const m = f.steps.find((x) => x.id === s.movedTo); if (m && m.change === 'added') f.steps.splice(f.steps.indexOf(m), 1); delete s.movedTo; }
-  s.change = s.before ? 'modified' : 'unchanged';
-  return { type: 'restore-step', flow: fid, step: id, desc: '流程「' + f.name + '」：恢复步骤' + stepLabel(s) };
+  const f = eFlowById(fid); if (!f) return false;
+  const s = f.steps.find((x) => x.id === id);
+  if (s && s.change === 'removed') {
+    if (s.movedTo) { const m = f.steps.find((x) => x.id === s.movedTo); if (m && m.change === 'added') f.steps.splice(f.steps.indexOf(m), 1); delete s.movedTo; }
+    s.change = s.before ? 'modified' : 'unchanged';
+    return { type: 'restore-step', flow: fid, step: id, desc: '流程「' + f.name + '」：恢复步骤' + stepLabel(s) };
+  }
+  const L = versionSnap(ui.leftVer);
+  const lf = L && (L.flows || []).find((x) => x.id === fid);
+  const ls = lf && (lf.steps || []).find((x) => x.id === id);
+  if (!ls) return false;
+  const rs = clone(ls); rs.change = 'added';
+  f.steps.push(rs);
+  return { type: 'restore-step', flow: fid, step: rs.id, desc: '流程「' + f.name + '」：从 v' + ui.leftVer + ' 恢复步骤' + stepLabel(rs) };
 }
 function opStepMove(fid, id, dir) {
-  const f = flowById(fid); if (!f) return false;
+  const f = eFlowById(fid); if (!f) return false;
   const vis = f.steps.filter((s) => visible(s, 'after'));
   const i = vis.findIndex((s) => s.id === id); const j = i + dir;
   if (i < 0 || j < 0 || j >= vis.length) return false;
@@ -471,15 +821,26 @@ function opStepMove(fid, id, dir) {
   return { type: 'move-step', flow: fid, step: m.id, origin: id, desc: '流程「' + f.name + '」：步骤' + stepLabel(m) + (dir < 0 ? '提前到' : '推后到') + stepLabel(nb) + (dir < 0 ? '之前' : '之后') };
 }
 function opModAdd() { const m = { id: newId(), name: 'NewModule', kind: 'module', change: 'added', items: [] }; S.spec.backend.push(m); ui.sel = { kind: 'be', id: m.id, side: 'after' }; return { type: 'add-module', id: m.id, desc: '后端：新增模块 #' + m.id }; }
-function opItemAdd(mid) { const f = findBe(mid); if (!f || f.item) return false; const it = { id: newId(), kind: 'function', name: 'newFunction()', change: 'added' }; f.m.items.push(it); ui.sel = { kind: 'be', id: it.id, side: 'after' }; return { type: 'add-item', id: it.id, module: mid, desc: '后端：模块「' + f.m.name + '」新增条目 #' + it.id }; }
+function opItemAdd(mid) { const f = eFindBe(mid); if (!f || f.item) return false; const it = { id: newId(), kind: 'function', name: 'newFunction()', change: 'added' }; f.m.items.push(it); ui.sel = { kind: 'be', id: it.id, side: 'after' }; return { type: 'add-item', id: it.id, module: mid, desc: '后端：模块「' + f.m.name + '」新增条目 #' + it.id }; }
 function opBeDelete(id) {
-  const f = findBe(id); if (!f) return false;
+  const f = eFindBe(id); if (!f) return false;
   const o = f.item || f.m;
   if (o.change === 'added') { if (f.item) f.m.items.splice(f.m.items.indexOf(o), 1); else S.spec.backend.splice(S.spec.backend.indexOf(o), 1); } else { o.change = 'removed'; delete o._um; }
   ui.sel = null;
   return { type: 'delete-be', id: id, desc: '后端：删除' + (f.item ? '模块「' + f.m.name + '」中的「' + o.name + '」' : '模块「' + o.name + '」') + ' #' + id };
 }
-function opBeRestore(id) { const f = findBe(id); const o = f && (f.item || f.m); if (!o || o.change !== 'removed') return false; o.change = o.before ? 'modified' : 'unchanged'; return { type: 'restore-be', id: id, desc: '后端：恢复「' + o.name + '」' }; }
+function opBeRestore(id) {
+  const f = eFindBe(id); const o = f && (f.item || f.m);
+  if (o && o.change === 'removed') { o.change = o.before ? 'modified' : 'unchanged'; return { type: 'restore-be', id: id, desc: '后端：恢复「' + o.name + '」' }; }
+  const L = versionSnap(ui.leftVer);
+  if (!L) return false;
+  for (const lm of (L.backend || [])) {
+    if (lm.id === id) { const rm = cloneWithChange(lm, 'added', ['items'], ''); S.spec.backend.push(rm); return { type: 'restore-be', id: rm.id, desc: '后端：从 v' + ui.leftVer + ' 恢复模块「' + rm.name + '」' }; }
+    const lit = (lm.items || []).find((x) => x.id === id);
+    if (lit) { const em = S.spec.backend.find((x) => x.id === lm.id); if (!em) return false; const rit = clone(lit); rit.change = 'added'; em.items.push(rit); return { type: 'restore-be', id: rit.id, desc: '后端：从 v' + ui.leftVer + ' 恢复「' + rit.name + '」' }; }
+  }
+  return false;
+}
 
 /* Generic field editor: returns an onCommit(value) handler. */
 function editor(resolve, field, ctx) {
@@ -498,17 +859,20 @@ function editor(resolve, field, ctx) {
   });
 }
 function addComment(target, category, severity, text) {
-  mutate(() => { S.seq = (S.seq || 0) + 1; S.comments.push({ id: 'c' + S.seq, target: target, where: whereOf(target), category: category, severity: severity, text: text, ts: new Date().toISOString() }); return null; });
+  const t = Object.assign({}, target);
+  if (HAS_MULTI_VER && !t.ver) t.ver = [ui.leftVer, ui.rightVer];
+  mutate(() => { S.seq = (S.seq || 0) + 1; S.comments.push({ id: 'c' + S.seq, target: t, where: whereOf(t), category: category, severity: severity, text: text, ts: new Date().toISOString() }); return null; });
 }
 function sameTarget(a, b) { return a.kind === b.kind && a.id === b.id && (a.side || '') === (b.side || ''); }
 function whereOf(t) {
-  const sideT = t.side === 'before' ? '改动前' : t.side === 'after' ? '改动后' : '';
-  if (t.kind === 'node') { const p = pageById(t.page); const e = p && findNode(p, t.id); return '页面「' + (p ? pageName(p) : t.page) + '」› ' + sideT + ' › ' + (e ? pathText(p, e.n, t.side) : '') + ' #' + t.id; }
-  if (t.kind === 'page') { const p = pageById(t.id); return '页面「' + (p ? pageName(p) : t.id) + '」（整页）'; }
-  if (t.kind === 'flow') { const f = flowById(t.id); return '流程「' + (f ? f.name : t.id) + '」（整个流程）'; }
-  if (t.kind === 'step') { const f = flowById(t.flow); const s = f && f.steps.find((x) => x.id === t.id); return '流程「' + (f ? f.name : t.flow) + '」› ' + sideT + ' › 步骤' + (s ? stepLabel(view(s, t.side)) : '') + ' #' + t.id; }
-  if (t.kind === 'be') { const f = findBe(t.id); if (!f) return '后端 #' + t.id; return '后端 › ' + sideT + ' › 模块「' + f.m.name + '」' + (f.item ? ' › 「' + f.item.name + '」' : '') + ' #' + t.id; }
-  return '整体';
+  const verPfx = HAS_MULTI_VER ? '[v' + ui.leftVer + '→v' + ui.rightVer + '] ' : '';
+  const sideT = t.side === 'before' ? sideLabel('before') : t.side === 'after' ? sideLabel('after') : '';
+  if (t.kind === 'node') { const p = pageById(t.page); const e = p && findNode(p, t.id); return verPfx + '页面「' + (p ? pageName(p) : t.page) + '」› ' + sideT + ' › ' + (e ? pathText(p, e.n, t.side) : '') + ' #' + t.id; }
+  if (t.kind === 'page') { const p = pageById(t.id); return verPfx + '页面「' + (p ? pageName(p) : t.id) + '」（整页）'; }
+  if (t.kind === 'flow') { const f = flowById(t.id); return verPfx + '流程「' + (f ? f.name : t.id) + '」（整个流程）'; }
+  if (t.kind === 'step') { const f = flowById(t.flow); const s = f && f.steps.find((x) => x.id === t.id); return verPfx + '流程「' + (f ? f.name : t.flow) + '」› ' + sideT + ' › 步骤' + (s ? stepLabel(view(s, t.side)) : '') + ' #' + t.id; }
+  if (t.kind === 'be') { const f = findBe(t.id); if (!f) return verPfx + '后端 #' + t.id; return verPfx + '后端 › ' + sideT + ' › 模块「' + f.m.name + '」' + (f.item ? ' › 「' + f.item.name + '」' : '') + ' #' + t.id; }
+  return verPfx + '整体';
 }
 function commentCount(kind, id, side) { return S.comments.filter((c) => c.target.kind === kind && c.target.id === id && (c.target.side || '') === (side || '')).length; }
 function cbadge(kind, id, side) { const n = commentCount(kind, id, side); return n ? h('span', { class: 'cmt-badge', title: n + ' 条批注' }, '💬' + n) : null; }
@@ -523,7 +887,7 @@ function validateSel() {
     else if (s.kind === 'be') ok = !!findBe(s.id);
     if (!ok) ui.sel = null;
   }
-  if (!pageById(ui.page) && S.spec.pages[0]) ui.page = S.spec.pages[0].id;
+  if (!pageById(ui.page) && CUR.pages[0]) ui.page = CUR.pages[0].id;
   if (ui.overlayOpen) { const p = curPage(); const e = p && findNode(p, ui.overlayOpen); if (!e || !afterVisibleIds(p).has(e.n.id)) ui.overlayOpen = null; }
 }
 
@@ -547,7 +911,7 @@ let UNITS = [];
 let UNIT_BY = new Map();
 function computeUnits() {
   const list = [];
-  S.spec.pages.forEach((p) => {
+  CUR.pages.forEach((p) => {
     if (p.change === 'added' || p.change === 'removed') { list.push({ key: p.id, page: p.id, id: p.id, kind: 'page', change: p.change }); return; }
     const walk = (n) => { if (n !== p.root && n.change !== 'unchanged') { list.push({ key: n.id, page: p.id, id: n.id, kind: 'node', change: n.change }); return; } (n.children || []).forEach(walk); };
     walk(p.root); p.overlays.forEach(walk);
@@ -565,7 +929,7 @@ function unitOf(pid, id) {
   const top = chain.find((x) => x.change !== 'unchanged');
   return top ? top.id : null;
 }
-function findNodeAnywhere(id) { for (const p of S.spec.pages) { const e = findNode(p, id); if (e) return { p: p, e: e }; } return null; }
+function findNodeAnywhere(id) { for (const p of CUR.pages) { const e = findNode(p, id); if (e) return { p: p, e: e }; } return null; }
 function unitTitle(u) {
   const p = pageById(u.page);
   if (u.kind === 'page') return '页面「' + pageName(p) + '」' + (u.change === 'added' ? '（整页新增）' : '（整页删除）');
@@ -814,6 +1178,7 @@ function renderWF(n, p, o) {
 
 // ------------------------------------------------------------------ app shell
 function render() {
+  syncViewSpec();
   computeUnits();
   if (ui.unit && !UNIT_BY.has(ui.unit)) ui.unit = null;
   const app = document.getElementById('app');
@@ -843,30 +1208,58 @@ function render() {
 function renderHeader() {
   const sp = S.spec;
   const fbCount = S.comments.length + S.ops.length;
+  const hist = isHistoryView();
   return h('header', { class: 'top' },
     h('h1', null, sp.title),
     h('span', { class: 'stage st-' + sp.stage }, STAGES[sp.stage]),
-    h('span', { class: 'ver' }, 'v' + sp.version),
+    h('span', { class: 'ver' }, HAS_MULTI_VER ? ('v' + LATEST_VER + '（共 ' + (VERSIONS.length - 1) + ' 版）') : ('v' + sp.version)),
     h('div', { class: 'acts-top' },
       h('button', { class: 'play-btn' + (ui.play ? ' on' : ''), onclick: () => (ui.play ? stopPlay() : startPlay()), title: '像 Figma 的演示模式一样点着试：弹窗、跳页、展开收起、切换状态' }, ui.play ? '■ 退出演示' : '▶ 演示'),
       ui.play ? null : h('div', { class: 'seg' },
         h('button', { class: ui.mode === 'view' ? 'on' : null, onclick: () => setMode('view'), title: '浏览改动、点任意元素写批注' }, '查看 / 批注'),
-        h('button', { class: ui.mode === 'edit' ? 'on' : null, onclick: () => setMode('edit'), title: '直接修改方案：拖动、增删、转为弹窗…' }, '编辑方案')),
+        h('button', { class: ui.mode === 'edit' ? 'on' : null, disabled: hist, onclick: () => setMode('edit'), title: hist ? ('查看历史版本时为只读；切回最新版 v' + LATEST_VER + ' 即可编辑方案') : '直接修改方案：拖动、增删、转为弹窗…' }, '编辑方案')),
       h('button', { disabled: !undoStack.length, onclick: undo, title: '撤销 (Ctrl+Z)' }, '↶ 撤销'),
       h('button', { disabled: !redoStack.length, onclick: redo, title: '重做 (Ctrl+Shift+Z)' }, '↷ 重做'),
       h('button', { class: 'primary', onclick: () => setTab('feedback') }, '反馈', fbCount ? h('span', { class: 'cnt' }, String(fbCount)) : null),
       h('button', { class: 'lnk' + (ui.confirmReset ? ' danger' : ''), onclick: resetAll, title: '丢弃所有修改和批注，恢复 Agent 给出的原始方案' }, ui.confirmReset ? '再点一次确认重置' : '重置')));
 }
 function renderTabs() {
-  const sp = S.spec;
+  const sp = CUR;
   const fc = sp.flows.filter((f) => flowStatus(f) !== 'unchanged').length;
   const bc = sp.backend.filter((m) => modStatus(m) !== 'unchanged').length;
   const tabs = [['canvas', '界面改动', String(UNITS.length)], ['flows', '流程变化', fc + '/' + sp.flows.length], ['backend', '后端变化', bc + '/' + sp.backend.length], ['feedback', '反馈', String(S.comments.length + S.ops.length)]];
-  return h('nav', { class: 'tabs' }, tabs.map((t) => h('button', { class: ui.tab === t[0] ? 'on' : null, onclick: () => setTab(t[0]) }, t[1], t[2] ? h('span', { class: 'n' }, t[2]) : null)));
+  let verBar = null;
+  if (HAS_MULTI_VER) {
+    const lSel = h('select', { class: 'ver-sel', 'data-ver': 'left', title: '左侧基准版本', onchange: (e) => setVersions(Number(e.target.value), ui.rightVer) },
+      VERSIONS.map((v) => h('option', { value: String(v.version) }, verOptLabel(v))));
+    lSel.value = String(ui.leftVer);
+    const rSel = h('select', { class: 'ver-sel', 'data-ver': 'right', title: '右侧目标版本', onchange: (e) => setVersions(ui.leftVer, Number(e.target.value)) },
+      VERSIONS.map((v) => h('option', { value: String(v.version) }, verOptLabel(v))));
+    rSel.value = String(ui.rightVer);
+    const atFull = isFullBaseView();
+    const toggleBtn = h('button', {
+      class: 'ver-btn' + (atFull ? ' on' : ''),
+      'data-ver-toggle': '1',
+      title: atFull ? ('切回本轮增量对比 v' + PREV_VER + ' → v' + LATEST_VER) : ('一键查看从现状到最新版的全量改动 v0 → v' + LATEST_VER),
+      onclick: () => setVersions(atFull ? PREV_VER : 0, LATEST_VER)
+    }, atFull ? ('只看本轮 v' + PREV_VER + '→v' + LATEST_VER) : ('对比现状 v0→v' + LATEST_VER));
+    verBar = h('div', { class: 'ver-bar' },
+      h('span', { class: 'ver-lbl' }, '版本对比'),
+      lSel,
+      h('span', { class: 'ver-arr' }, '→'),
+      rSel,
+      toggleBtn);
+  }
+  return h('nav', { class: 'tabs' }, tabs.map((t) => h('button', { class: ui.tab === t[0] ? 'on' : null, onclick: () => setTab(t[0]) }, t[1], t[2] ? h('span', { class: 'n' }, t[2]) : null)), verBar);
 }
 function renderBanners() {
   const out = [];
   if (!STORAGE_OK) out.push(h('div', { class: 'banner info' }, '当前预览环境不允许保存进度（例如在沙箱里预览），关闭或刷新后修改会丢失。改完请及时到「反馈」页复制反馈。'));
+  if (isHistoryView()) {
+    out.push(h('div', { class: 'banner info ver-banner' },
+      '正在回看历史对比 v' + ui.leftVer + ' → v' + ui.rightVer + '（只读，仍可写批注）',
+      h('button', { class: 'ver-back', onclick: () => setVersions(PREV_VER, LATEST_VER) }, '回到最新版 v' + PREV_VER + '→v' + LATEST_VER)));
+  }
   if (S.spec.stage === 'prototype') out.push(h('div', { class: 'banner' }, '方案原型（结构线框），还没有写代码。线框只表达「有哪些模块、放在哪、怎么触发」，不代表最终视觉样式。'));
   return out;
 }
@@ -880,23 +1273,27 @@ function setTab(t) { ui.tab = t; save(); render(); }
 function setDiffView(v) { if (['split', 'wipe'].indexOf(v) < 0 || ui.diffView === v) return; ui.diffView = v; ui.cam = null; hoverKey = null; save(); render(); }
 function setDiffMode(on) { ui.diffMode = !!on; save(); render(); }
 function setShowPins(on) { ui.showPins = !!on; save(); render(); }
-function setWipePos(pid, pct) {
+function setWipePos(key, pct) {
   const v = Math.max(0, Math.min(100, Math.round(Number(pct))));
-  ui.wipePos[pid] = v;
-  const box = document.querySelector('.cv-wipe[data-page="' + CSS.escape(pid) + '"]');
+  ui.wipePos[key] = v;
+  const esc = CSS.escape(key);
+  const box = document.querySelector('.cv-wipe[data-wipe-key="' + esc + '"]') || document.querySelector('.cv-wipe[data-page="' + esc + '"]:not(.cv-ov-wipe)');
   if (box) box.style.setProperty('--wipe', v + '%');
-  const rng = document.querySelector('.cv-wipe-range[data-page="' + CSS.escape(pid) + '"]');
+  const rng = document.querySelector('.cv-wipe-range[data-wipe-key="' + esc + '"]') || document.querySelector('.cv-wipe-range[data-page="' + esc + '"]:not([data-wipe-key])');
   if (rng && Number(rng.value) !== v) rng.value = String(v);
-  const lbl = document.querySelector('.cv-wipe-pct[data-page="' + CSS.escape(pid) + '"]');
+  const lbl = document.querySelector('.cv-wipe-pct[data-wipe-key="' + esc + '"]') || document.querySelector('.cv-wipe-pct[data-page="' + esc + '"]:not([data-wipe-key])');
   if (lbl) lbl.textContent = v + '%';
 }
-function setMode(m) { ui.mode = m; if (m === 'edit' && ui.tab === 'feedback') ui.tab = 'canvas'; save(); render(); }
+function setMode(m) {
+  if (m === 'edit' && isHistoryView()) { toast('历史版本为只读，请先切回最新版 v' + LATEST_VER, true); return; }
+  ui.mode = m; if (m === 'edit' && ui.tab === 'feedback') ui.tab = 'canvas'; save(); render();
+}
 function resetAll() {
   // No confirm(): sandboxed previews block modal dialogs. Ask for a second click instead.
   if (!ui.confirmReset) { ui.confirmReset = true; render(); setTimeout(() => { ui.confirmReset = false; render(); }, 4000); return; }
   ui.confirmReset = false;
   undoStack.push(JSON.stringify(S)); redoStack = [];
-  S = freshState(); ui.sel = null; ui.unit = null; save(); render();
+  S = freshState(); syncViewSpec(); ui.sel = null; ui.unit = null; save(); render();
 }
 function toast(msg, err) { ui.toast = { msg: msg, err: !!err }; render(); clearTimeout(toastTimer); toastTimer = setTimeout(() => { ui.toast = null; render(); }, err ? 9000 : 6000); }
 function applySel() {
@@ -960,24 +1357,39 @@ function onMainOver(e) {
       document.querySelectorAll('#cv-world [data-kind="node"][data-id="' + CSS.escape(k.dataset.id) + '"][data-side="' + otherSide + '"]').forEach((x) => x.classList.add('partner'));
       nextHover = k.dataset.id;
     }
+  } else {
+    const ovOrTrig = e.target.closest && e.target.closest('#cv-world .cv-ov[data-ov], #cv-world .wf.is-trigger[data-id]');
+    if (ovOrTrig) nextHover = 'ov:' + (ovOrTrig.dataset.ov || ovOrTrig.dataset.id);
   }
   if (ui.sel && ui.sel.kind === 'node') {
     const sEl = document.querySelector('#main [data-kind="node"][data-id="' + CSS.escape(ui.sel.id) + '"]' + (ui.sel.side ? '[data-side="' + ui.sel.side + '"]' : ''));
     if (sEl && sEl.dataset.partner) document.querySelectorAll('#main [data-id="' + CSS.escape(sEl.dataset.partner) + '"]').forEach((x) => x.classList.add('partner'));
   }
-  if (ui.tab === 'canvas' && ui.diffView === 'split' && nextHover !== hoverKey) {
+  if (ui.tab === 'canvas' && nextHover !== hoverKey) {
     hoverKey = nextHover;
     drawLinks();
   }
+}
+function enclosingPanelId(p, nodeId) {
+  if (!p || !nodeId) return null;
+  const target = findNode(p, nodeId);
+  if (!target) return null;
+  for (const ov of p.overlays) { if (ov.id === nodeId || contains(ov, target.n)) return ov.id; }
+  const chain = parentChain(p, nodeId);
+  for (let i = chain.length - 1; i >= 0; i--) { if (isRevealed(chain[i], p)) return chain[i].id; }
+  if (isRevealed(target.n, p)) return target.n.id;
+  return null;
 }
 function focusUnit(key, opts) {
   computeUnits();
   if (window.innerWidth < 1100) ui.listOpen = false;
   const u = UNIT_BY.get(key); if (!u) return;
   if (ui.diffView === 'wipe') {
-    if (u.change === 'removed') ui.wipePos[u.page] = 100;
-    else if (u.change === 'added') ui.wipePos[u.page] = 0;
-    else ui.wipePos[u.page] = 50;
+    const pct = u.change === 'removed' ? 100 : u.change === 'added' ? 0 : 50;
+    ui.wipePos[u.page] = pct;
+    const p = pageById(u.page);
+    const ovId = u.kind === 'node' ? enclosingPanelId(p, u.id) : null;
+    if (ovId) ui.wipePos[u.page + '::' + ovId] = pct;
   }
   ui.diffMode = true;
   ui.tab = 'canvas'; ui.unit = key; ui.page = u.page;
@@ -986,16 +1398,19 @@ function focusUnit(key, opts) {
   if (!opts || opts.zoom !== false) requestAnimationFrame(() => {
     const els = unitEls(key);
     if (!els.length) return;
-    if (els.length > 1 && els.some((el) => el.closest('.cv-ov'))) {
-      focusEl(els.find((el) => el.dataset.side === 'after') || els[0]);
-    } else focusEls(els);
+    focusEls(els);
   });
 }
 function focusNode(pid, id) {
   const p = pageById(pid); const e = p && findNode(p, id); if (!e) return;
   const vis = afterVisibleIds(p);
   const side = vis.has(id) && p.change !== 'removed' ? 'after' : 'before';
-  if (ui.diffView === 'wipe') ui.wipePos[pid] = side === 'before' ? 100 : 0;
+  if (ui.diffView === 'wipe') {
+    const pct = side === 'before' ? 100 : 0;
+    ui.wipePos[pid] = pct;
+    const ovId = enclosingPanelId(p, id);
+    if (ovId) ui.wipePos[pid + '::' + ovId] = pct;
+  }
   ui.tab = 'canvas'; ui.page = pid; ui.unit = unitOf(pid, id);
   ui.sel = { kind: 'node', page: pid, id: id, side: side };
   save(); render(); scrollToSel();
@@ -1022,7 +1437,13 @@ function drawLinks() {
   const addCurve = (A, B, color, label, opts) => {
     opts = opts || {};
     let x1, y1, x2, y2, c1x, c1y, c2x, c2y;
-    if (B.l >= A.r + 16 || B.r <= A.l - 16) {
+    if (opts.vertical || (B.t >= A.b + 24 && !opts.diffLink)) {
+      const down = B.t >= A.b;
+      x1 = (A.l + A.r) / 2; y1 = down ? A.b + 2 : A.t - 2;
+      x2 = (B.l + B.r) / 2; y2 = down ? B.t - 3 : B.b + 3;
+      const d = Math.max(48, Math.abs(y2 - y1) * 0.42) * (down ? 1 : -1);
+      c1x = x1; c1y = y1 + d; c2x = x2; c2y = y2 - d;
+    } else if (B.l >= A.r + 16 || B.r <= A.l - 16) {
       const right = B.l >= A.r + 16;
       x1 = right ? A.r + 2 : A.l - 2; y1 = (A.t + A.b) / 2; x2 = right ? B.l - 3 : B.r + 3; y2 = opts.centerY ? (B.t + B.b) / 2 : (B.t + Math.min(36, (B.b - B.t) / 2));
       const d = Math.max(opts.minCurve || 80, Math.abs(x2 - x1) * 0.45) * (right ? 1 : -1); c1x = x1 + d; c1y = y1; c2x = x2 - d; c2y = y2;
@@ -1041,14 +1462,15 @@ function drawLinks() {
     }
     n++;
   };
-  S.spec.pages.forEach((p) => {
+  CUR.pages.forEach((p) => {
     const grp = q(w, '.cv-group[data-page="' + CSS.escape(p.id) + '"]'); if (!grp) return;
     const isSplit = grp.classList.contains('is-split');
     const isDual = isSplit || grp.classList.contains('is-wipe');
     const sides = isDual ? ['before', 'after'] : ['after'];
+    const bottomArea = isDual ? q(grp, ':scope > .cv-panels-area') : null;
     sides.forEach((modeSide) => {
       const sideFilter = '[data-side="' + modeSide + '"]';
-      const panelCol = isDual ? q(grp, '.cv-ovcol.' + (modeSide === 'before' ? 'left' : 'right')) : grp;
+      const panelHost = bottomArea || (isDual ? q(grp, '.cv-ovcol.' + (modeSide === 'before' ? 'left' : 'right')) : grp);
       entries(p).forEach((e) => {
         if (!visible(e.n, modeSide)) return;
         const side = modeSide;
@@ -1062,14 +1484,17 @@ function drawLinks() {
             const pg = pageById(i.target); color = pg && pg.change !== 'unchanged' ? pg.change : 'nav';
           } else if (i.target) {
             const t = CSS.escape(String(i.target));
-            tEl = q(panelCol, '.cv-ov[data-ov="' + t + '"]' + sideFilter) || q(grp, '[data-kind="node"][data-id="' + t + '"]' + sideFilter) || (!isDual ? q(w, '.cv-ov[data-ov="' + t + '"]') || q(w, '[data-kind="node"][data-id="' + t + '"]') : null);
+            tEl = q(panelHost, '.cv-ov[data-ov="' + t + '"]' + sideFilter) || q(grp, '[data-kind="node"][data-id="' + t + '"]' + sideFilter) || (!isDual ? q(w, '.cv-ov[data-ov="' + t + '"]') || q(w, '[data-kind="node"][data-id="' + t + '"]') : null);
             const f = findNodeAnywhere(i.target); if (f && LINK_COLOR[f.e.n.change]) color = f.e.n.change;
           }
           if (!tEl || tEl === sEl || tEl.contains(sEl) || sEl.contains(tEl)) return;
-          const related = !!((sel && (sel.id === e.n.id || sel.id === i.target || (sel.kind === 'page' && sel.id === p.id))) || (unit && (unit === i.target || sEl.dataset.unit === unit || tEl.dataset.unit === unit)));
+          const hovered = !!(hoverKey && (hoverKey === 'ov:' + e.n.id || hoverKey === 'ov:' + i.target));
+          const related = !!(hovered || (sel && (sel.id === e.n.id || sel.id === i.target || (sel.kind === 'page' && sel.id === p.id))) || (unit && (unit === i.target || sEl.dataset.unit === unit || tEl.dataset.unit === unit)));
+          const inBottom = !!(bottomArea && bottomArea.contains(tEl));
           const toPanel = tEl.classList.contains('cv-ov') && grp.contains(tEl) && i.action !== 'hide';
-          if (!ui.showLinks && !related && !(toPanel && (ui.diffMode || ui.mode === 'edit'))) return;
-          addCurve(loc(sEl.getBoundingClientRect()), loc(tEl.getBoundingClientRect()), color, IA_SHORT[i.action] || i.action, { on: related, dashed: color === 'removed', from: e.n.id, to: String(i.target || ''), action: i.action });
+          if (inBottom) { if (!ui.showLinks && !related) return; }
+          else if (!ui.showLinks && !related && !(toPanel && (ui.diffMode || ui.mode === 'edit'))) return;
+          addCurve(loc(sEl.getBoundingClientRect()), loc(tEl.getBoundingClientRect()), color, IA_SHORT[i.action] || i.action, { on: related, dashed: color === 'removed', from: e.n.id, to: String(i.target || ''), action: i.action, vertical: inBottom && !bottomArea.contains(sEl) });
         });
       });
     });
@@ -1187,11 +1612,11 @@ function wirePanZoom(vp) {
 
 // ------------------------------------------------------------------ canvas tab
 function renderCanvasTab() {
-  if (!S.spec.pages.length) return h('div', { class: 'cv-layout' }, h('div', { class: 'empty', style: 'flex:1' }, '本次变更不涉及界面。', ui.mode === 'edit' ? h('button', { onclick: () => mutate(opAddPage) }, '+ 新增页面') : null));
+  if (!CUR.pages.length) return h('div', { class: 'cv-layout' }, h('div', { class: 'empty', style: 'flex:1' }, '本次变更不涉及界面。', ui.mode === 'edit' ? h('button', { onclick: () => mutate(opAddPage) }, '+ 新增页面') : null));
   return h('div', { class: 'cv-layout' + (ui.listOpen ? ' list-open' : '') }, changeList(), canvasArea(), detailPanel());
 }
 function changeList() {
-  const sp = S.spec;
+  const sp = CUR;
   const items = [];
   sp.pages.forEach((p) => {
     const us = UNITS.filter((u) => u.page === p.id);
@@ -1206,7 +1631,7 @@ function changeList() {
     });
     if (ui.mode === 'edit') items.push(h('div', { class: 'hint', style: 'padding:0 10px 6px' }));
   });
-  const nq = sp.questions.length;
+  const nq = S.spec.questions.length;
   return h('aside', { class: 'cv-list', id: 'cv-list' },
     sp.summary ? h('details', { class: 'cv-sum', open: sp.summary.length < 140 ? true : null }, h('summary', null, '这次改什么'), h('div', { class: 'summary' }, sp.summary)) : null,
     h('div', { class: 'legend sm' }, h('span', null, h('i', { class: 'lg mod' }), '修改'), h('span', null, h('i', { class: 'lg add' }), '新增'), h('span', null, h('i', { class: 'lg rm' }), '删除')),
@@ -1219,7 +1644,7 @@ function changeList() {
 function canvasArea() {
   const editing = ui.mode === 'edit';
   const diffOn = ui.diffMode || editing;
-  const world = h('div', { class: 'cv-world is-split', id: 'cv-world' }, S.spec.pages.map(pageGroup));
+  const world = h('div', { class: 'cv-world is-split', id: 'cv-world' }, CUR.pages.map(pageGroup));
   const t = (key, label, title) => h('button', { class: ui[key] ? 'on' : null, title: title, onclick: () => { ui[key] = !ui[key]; render(); } }, label);
   const vbtn = (v, label, title) => h('button', { class: ui.diffView === v ? 'on' : null, 'data-dv': v, title: title, onclick: () => setDiffView(v) }, label);
   const tools = h('div', { class: 'cv-tools' },
@@ -1241,7 +1666,7 @@ function canvasArea() {
   const vp = h('div', { class: 'cv-vp' + (diffOn ? ' diff-mode' : ' clean-mode') + (ui.diffMode ? ' fade' : (ui.fade ? ' fade' : '')) + (ui.showPins ? '' : ' pins-off') + (ui.showFn ? ' show-fn' : '') + (ui.showComp ? ' show-comp' : '') + (editing ? ' editing' : ''), id: 'cv-vp' },
     world, tools,
     editing ? palette() : null,
-    h('div', { class: 'cv-hint' }, editing ? (ui.diffView === 'split' ? '在右侧「改动后」画板拖组件 = 改位置（左侧改动前只读）· 拖空白处平移 · Ctrl/⌘+滚轮缩放' : '将滑块拖到最左可完整编辑「改动后」画板 · 拖空白处平移 · Ctrl/⌘+滚轮缩放') : (ui.diffView === 'wipe' ? '左右拖动中间 ⇄ 滑块刮开对比改动前后 · 拖空白处平移 · Ctrl/⌘+滚轮缩放 · 悬停 💬 气泡看注释' : '拖动平移 · 滚轮上下移动 · Ctrl/⌘+滚轮缩放 · 下拉框与标签页可直接点击 · 悬停 💬 气泡看注释')));
+    h('div', { class: 'cv-hint' }, editing ? (ui.diffView === 'split' ? '在右侧「' + sideLabel('after') + '」画板拖组件 = 改位置（左侧只读）· 拖空白处平移 · Ctrl/⌘+滚轮缩放' : '将滑块拖到最左可完整编辑「' + sideLabel('after') + '」画板 · 拖空白处平移 · Ctrl/⌘+滚轮缩放') : (ui.diffView === 'wipe' ? '左右拖动中间 ⇄ 滑块刮开对比前后版本 · 拖空白处平移 · Ctrl/⌘+滚轮缩放 · 悬停 💬 气泡看注释' : '拖动平移 · 滚轮上下移动 · Ctrl/⌘+滚轮缩放 · 下拉框与标签页可直接点击 · 悬停 💬 气泡看注释')));
   wirePanZoom(vp);
   return vp;
 }
@@ -1249,13 +1674,13 @@ function pageFrame(p, side, showSideTag, fullVoidWidth) {
   const whole = p.change === 'added' || p.change === 'removed';
   const isVoid = (side === 'before' && p.change === 'added') || (side === 'after' && p.change === 'removed');
   const vPage = view(p, side === 'before' ? 'before' : 'after');
-  const sideTag = showSideTag ? h('span', { class: 'cv-side-tag ' + side }, side === 'before' ? '改动前' : '改动后') : null;
+  const sideTag = showSideTag ? h('span', { class: 'cv-side-tag ' + side }, sideLabel(side)) : null;
   if (isVoid) {
     const w = fullVoidWidth ? (Number(p.width) || 1280) : Math.min(Number(p.width) || 1280, 420);
     return h('div', { class: 'cv-frame cv-void cv-' + side, 'data-page': p.id, 'data-side': side, style: { width: w + 'px' } },
       h('div', { class: 'cv-fh', 'data-kind': 'page', 'data-id': p.id },
         sideTag, h('span', { class: 'dot dot-' + pageStatus(p) }), h('span', null, pageName(p)), p.route ? h('span', { class: 'route' }, p.route) : null),
-      h('div', { class: 'cv-fb cv-void-body' }, side === 'before' ? '改动前没有这个页面' : '这个页面将被删除'));
+      h('div', { class: 'cv-fb cv-void-body' }, side === 'before' ? (HAS_MULTI_VER ? sideLabel('before') + '没有这个页面' : '改动前没有这个页面') : (HAS_MULTI_VER ? sideLabel('after') + '已删除这个页面' : '这个页面将被删除')));
   }
   const ghost = side === 'before' ? p.change === 'removed' : (side === 'merged' && p.change === 'removed');
   const u = whole ? UNIT_BY.get(p.id) : null;
@@ -1267,6 +1692,168 @@ function pageFrame(p, side, showSideTag, fullVoidWidth) {
       sideTag, h('span', { class: 'dot dot-' + pageStatus(p) }), h('span', null, pageName(vPage)), vPage.route ? h('span', { class: 'route' }, vPage.route) : null, cbadge('page', p.id)),
     h('div', { class: 'cv-fb' }, renderWF(p.root, p, o)));
 }
+function subtreeHasChange(n) {
+  if (!n) return false;
+  if (n.change && n.change !== 'unchanged') return true;
+  return (n.children || []).some(subtreeHasChange);
+}
+function panelStatus(p, n) {
+  if (p.change === 'added') return 'added';
+  if (p.change === 'removed') return 'removed';
+  const chain = parentChain(p, n.id);
+  const ancAdded = chain.some((x) => x.change === 'added');
+  const ancRemoved = chain.some((x) => x.change === 'removed');
+  const inBefore = visible(n, 'before') && !ancAdded;
+  const inAfter = visible(n, 'after') && !ancRemoved;
+  if (!inBefore && inAfter) return 'added';
+  if (inBefore && !inAfter) return 'removed';
+  if (!inBefore && !inAfter) return 'removed';
+  return subtreeHasChange(n) ? 'modified' : 'unchanged';
+}
+function collectPagePanels(p) {
+  const seen = new Set();
+  const reveals = [], overlays = [];
+  const scan = (n) => {
+    if (n !== p.root && isRevealed(n, p) && !seen.has(n.id)) {
+      seen.add(n.id);
+      reveals.push({ n: n, kind: 'reveal', status: panelStatus(p, n) });
+    }
+    (n.children || []).forEach(scan);
+  };
+  scan(p.root);
+  p.overlays.forEach((ov) => {
+    if (!seen.has(ov.id)) {
+      seen.add(ov.id);
+      overlays.push({ n: ov, kind: 'overlay', status: panelStatus(p, ov) });
+    }
+    scan(ov);
+  });
+  return reveals.concat(overlays);
+}
+function panelWidth(n, kind) {
+  const v = view(n, n.change === 'removed' ? 'before' : 'after');
+  if (kind === 'reveal') return Number(v.pw) || (bt(v.type) === 'list' || bt(v.type) === 'menu' ? 360 : 480);
+  return Number(v.pw) || OV_W[bt(v.type)] || OV_W[v.type] || 420;
+}
+function panelTriggersNode(p, n, kind, side) {
+  const v = view(n, side);
+  if (kind === 'overlay') {
+    const trs = trigList(v).map((t) => findNode(p, t)).filter((t) => t && visible(t.n, side));
+    return trs.length
+      ? h('span', { class: 'cv-ov-trig' }, '点击 ', trs.map((t, i) => [i ? '、' : '', h('button', { class: 'lnk', onclick: (e) => { e.stopPropagation(); focusNode(p.id, t.n.id); } }, nlabel(view(t.n, side)))]), ' 后打开')
+      : h('span', { class: 'cv-ov-trig muted' }, '未指定触发元素');
+  }
+  const chain = parentChain(p, n.id).filter((x) => x !== p.root);
+  const parent = chain[chain.length - 1];
+  const sh = showersOf(n.id).filter((x) => visible(x, side));
+  return h('span', { class: 'cv-ov-trig' },
+    sh.length ? ['点击 ', sh.map((t, i) => [i ? '、' : '', h('button', { class: 'lnk', onclick: (e) => { e.stopPropagation(); focusNode(p.id, t.id); } }, nlabel(view(t, side)))]), ' 后展开'] : '展开面板',
+    parent ? ' · 在 ' + nlabel(view(parent, side)) + ' 里' : '',
+    ' ',
+    h('button', { class: 'lnk', onclick: (e) => { e.stopPropagation(); const sl = document.querySelector('#cv-world .wf-slot[data-id="' + CSS.escape(n.id) + '"][data-side="' + side + '"]') || document.querySelector('#cv-world .wf-slot[data-id="' + CSS.escape(n.id) + '"]'); if (sl) focusEl(sl); } }, '看位置'));
+}
+function panelCard(n, p, kind, side, width, compactHead) {
+  const whole = p.change === 'added' || p.change === 'removed';
+  const ghost = side === 'before' && (p.change === 'removed' || n.change === 'removed');
+  const v = view(n, side);
+  let anchorIds = [], triggerAttr = null, bodyEl = null, changeAttr = ghost ? 'removed' : n.change;
+  if (kind === 'overlay') {
+    const trs = trigList(v).map((t) => findNode(p, t)).filter((t) => t && visible(t.n, side));
+    anchorIds = trs.map((t) => t.n.id);
+    triggerAttr = trigList(v).join(' ') || null;
+    bodyEl = renderWF(n, p, { side: side, ctx: 'canvas', parentLayout: 'col', whole: whole, unit: whole ? p.id : null, ghost: ghost });
+  } else {
+    const chain = parentChain(p, n.id).filter((x) => x !== p.root);
+    const anc = chain.find((x) => x.change !== 'unchanged');
+    const sh = showersOf(n.id).filter((x) => visible(x, side));
+    anchorIds = sh.map((x) => x.id);
+    changeAttr = ghost ? 'removed' : (anc ? anc.change : n.change);
+    bodyEl = renderWF(n, p, { side: side, ctx: 'canvas', parentLayout: 'col', asPanel: true, ghost: ghost, whole: whole || !!(anc && (anc.change === 'added' || anc.change === 'removed')), unit: (whole ? p.id : null) || (anc ? anc.id : null) });
+  }
+  const head = compactHead
+    ? h('div', { class: 'cv-ovh cv-ovh-side' }, h('span', { class: 'cv-side-tag ' + side }, sideLabel(side)))
+    : null;
+  return h('div', {
+    class: 'cv-ov' + (kind === 'reveal' ? ' cv-rev' : '') + (side === 'before' ? ' cv-ov-before' : ' cv-ov-after'),
+    'data-ov': n.id, 'data-page': p.id, 'data-side': side,
+    'data-anchor': anchorIds.join(' ') || null, 'data-trigger': triggerAttr,
+    'data-slot': kind === 'reveal' ? n.id : null, 'data-change': changeAttr,
+    style: { width: width + 'px' }
+  }, head, bodyEl);
+}
+function panelPairBox(item, p) {
+  const { n, kind, status } = item;
+  const w = panelWidth(n, kind);
+  const mainSide = status === 'removed' ? 'before' : 'after';
+  const v = view(n, mainSide);
+  const kindLbl = kind === 'reveal' ? '展开面板' : tname(v.type);
+  const titleText = nlabel(v);
+  const trigEl = panelTriggersNode(p, n, kind, mainSide);
+  if (status === 'modified') {
+    const bridgeLbl = HAS_MULTI_VER ? ('v' + ui.leftVer + '→v' + ui.rightVer) : '修改';
+    if (ui.diffView === 'wipe') {
+      const wkey = p.id + '::' + n.id;
+      const pct = ui.wipePos[wkey] !== undefined ? ui.wipePos[wkey] : 50;
+      const bf = panelCard(n, p, kind, 'before', w, true);
+      const af = panelCard(n, p, kind, 'after', w, true);
+      const wipeBox = h('div', { class: 'cv-wipe cv-ov-wipe', 'data-page': p.id, 'data-wipe-key': wkey, style: { width: w + 'px', '--wipe': pct + '%' } },
+        h('div', { class: 'cv-wipe-after' }, af),
+        h('div', { class: 'cv-wipe-before' }, bf));
+      wipeBox.append(h('div', { class: 'cv-wipe-handle', title: '左右拖动对比前后版本', onpointerdown: (e) => startWipeDrag(e, wkey, wipeBox) },
+        h('div', { class: 'cv-wipe-line' }),
+        h('div', { class: 'cv-wipe-knob' }, '⇄')));
+      const range = h('input', { type: 'range', class: 'cv-wipe-range', 'data-wipe-key': wkey, min: '0', max: '100', value: String(pct), oninput: (e) => setWipePos(wkey, e.target.value), onclick: (e) => e.stopPropagation() });
+      return h('div', { class: 'cv-cmp-box cv-ov-cmp is-wipe', 'data-page': p.id, 'data-ov-group': n.id, 'data-status': 'modified' },
+        h('div', { class: 'cv-cmp-head cv-ov-cmp-head' },
+          h('div', { class: 'cv-ov-cmp-meta' },
+            h('span', { class: 'cv-cmp-title' }, h('span', { class: 'dot dot-modified' }), h('span', { class: 'chip sm' }, kindLbl), h('b', null, titleText), chgChip('modified')),
+            trigEl),
+          h('span', { class: 'cv-wipe-ctrl', onclick: (e) => e.stopPropagation() },
+            h('button', { class: 'lnk cv-leg-a', title: '完整看右侧版本', onclick: () => setWipePos(wkey, 0) }, sideLabel('after')),
+            range,
+            h('button', { class: 'lnk cv-leg-b', title: '完整看左侧版本', onclick: () => setWipePos(wkey, 100) }, sideLabel('before')),
+            h('span', { class: 'cv-wipe-pct', 'data-wipe-key': wkey }, pct + '%'))),
+        wipeBox);
+    }
+    const bf = panelCard(n, p, kind, 'before', w, true);
+    const af = panelCard(n, p, kind, 'after', w, true);
+    return h('div', { class: 'cv-cmp-box cv-ov-cmp', 'data-page': p.id, 'data-ov-group': n.id, 'data-status': 'modified' },
+      h('div', { class: 'cv-cmp-head cv-ov-cmp-head' },
+        h('div', { class: 'cv-ov-cmp-meta' },
+          h('span', { class: 'cv-cmp-title' }, h('span', { class: 'dot dot-modified' }), h('span', { class: 'chip sm' }, kindLbl), h('b', null, titleText), chgChip('modified')),
+          trigEl),
+        h('span', { class: 'cv-cmp-legend' }, h('span', { class: 'cv-leg-b' }, sideLabel('before')), ' → ', h('span', { class: 'cv-leg-a' }, sideLabel('after')))),
+      h('div', { class: 'cv-pair cv-ov-pair' },
+        bf,
+        h('div', { class: 'cv-bridge cv-ov-bridge', 'aria-hidden': 'true' }, h('div', { class: 'cv-bridge-arrow' }, '→'), h('div', { class: 'cv-bridge-lbl' }, bridgeLbl)),
+        af));
+  }
+  const statusTag = status === 'added'
+    ? [chgChip('added'), h('span', { class: 'cv-ov-only' }, '仅 ' + sideLabel('after'))]
+    : status === 'removed'
+      ? [chgChip('removed'), h('span', { class: 'cv-ov-only' }, '仅 ' + sideLabel('before'))]
+      : [h('span', { class: 'chip sm' }, '无改动')];
+  return h('div', { class: 'cv-ov-solo is-' + status, 'data-page': p.id, 'data-ov-group': n.id, 'data-status': status },
+    h('div', { class: 'cv-ov-solo-head' },
+      h('div', { class: 'cv-ov-cmp-meta' },
+        h('span', { class: 'cv-cmp-title' }, h('span', { class: 'dot dot-' + status }), h('span', { class: 'chip sm' }, kindLbl), h('b', null, titleText), statusTag),
+        trigEl)),
+    panelCard(n, p, kind, mainSide, w, false));
+}
+function panelsArea(p, editing) {
+  const list = collectPagePanels(p);
+  if (!list.length && !editing) return null;
+  const modCnt = list.filter((x) => x.status !== 'unchanged').length;
+  const sameCnt = list.length - modCnt;
+  const sub = list.length ? ('共 ' + list.length + ' 个' + (modCnt ? ' · ' + modCnt + ' 个有改动' : '') + (sameCnt ? ' · ' + sameCnt + ' 个无改动（合并展示）' : '')) : '暂无弹层或展开面板';
+  return h('div', { class: 'cv-panels-area', 'data-page': p.id },
+    h('div', { class: 'cv-panels-head' },
+      h('b', null, '交互面板（弹窗 / 抽屉 / 展开区）'),
+      h('span', { class: 'hint' }, sub)),
+    h('div', { class: 'cv-panels-grid' },
+      list.map((item) => panelPairBox(item, p)),
+      editing ? h('div', { class: 'cv-ovdrop', 'data-drop': 'overlays', 'data-page': p.id }, '把组件拖到这里，变成点击后才出现的弹层') : null));
+}
 function sidePanelsFor(p, side, onlyChanged) {
   const whole = p.change === 'added' || p.change === 'removed';
   const ghost = side === 'before' ? p.change === 'removed' : (side === 'merged' && p.change === 'removed');
@@ -1274,7 +1861,7 @@ function sidePanelsFor(p, side, onlyChanged) {
   const allow = (n) => {
     if (side === 'merged') return !(ghost && n.change === 'added');
     if (!visible(n, side)) return false;
-    if (onlyChanged && p.change !== 'removed') return n.change !== 'unchanged' || (function hasChg(x) { return (x.children || []).some((c) => c.change !== 'unchanged' || hasChg(c)); })(n);
+    if (onlyChanged && p.change !== 'removed') return subtreeHasChange(n);
     return true;
   };
   const ovs = p.overlays.filter(allow);
@@ -1287,12 +1874,12 @@ function sidePanelsFor(p, side, onlyChanged) {
   scan(p.root); p.overlays.forEach(scan);
   return ovs.map((x) => overlayFrame(x, p, o)).concat(revs.map((n) => revealPanel(n, p, o)));
 }
-function startWipeDrag(e, pid, box) {
+function startWipeDrag(e, key, box) {
   e.preventDefault(); e.stopPropagation();
   const move = (ev) => {
     const r = box.getBoundingClientRect();
     if (!r.width) return;
-    setWipePos(pid, ((ev.clientX - r.left) / r.width) * 100);
+    setWipePos(key, ((ev.clientX - r.left) / r.width) * 100);
   };
   const end = () => {
     document.removeEventListener('pointermove', move);
@@ -1315,47 +1902,43 @@ function pageGroup(p) {
       editing ? h('div', { class: 'cv-ovdrop', 'data-drop': 'overlays' }, '把组件拖到这里，变成点击后才出现的弹层') : null);
     return h('div', { class: 'cv-group', 'data-page': p.id }, left, frame, right);
   }
-  const leftPanels = p.change === 'added' ? [] : sidePanelsFor(p, 'before', true);
-  const rightPanels = p.change === 'removed' ? [] : sidePanelsFor(p, 'after', false);
   const editing = ui.mode === 'edit' && p.change !== 'removed';
-  const left = h('div', { class: 'cv-ovcol left', 'data-page': p.id }, leftPanels);
-  const right = h('div', { class: 'cv-ovcol right', 'data-page': p.id }, rightPanels,
-    editing ? h('div', { class: 'cv-ovdrop', 'data-drop': 'overlays' }, '把组件拖到这里，变成点击后才出现的弹层') : null);
-  const bridgeLbl = p.change === 'added' ? '新增' : p.change === 'removed' ? '删除' : '改版';
+  const bottomPanels = panelsArea(p, editing);
+  const bridgeLbl = HAS_MULTI_VER ? ('v' + ui.leftVer + '→v' + ui.rightVer) : (p.change === 'added' ? '新增' : p.change === 'removed' ? '删除' : '改版');
   if (ui.diffView === 'wipe') {
     const pct = ui.wipePos[p.id] !== undefined ? ui.wipePos[p.id] : 50;
     const bf = pageFrame(p, 'before', true, true);
     const af = pageFrame(p, 'after', true, true);
-    const wipeBox = h('div', { class: 'cv-wipe', 'data-page': p.id, style: { width: (Number(p.width) || 1280) + 'px', '--wipe': pct + '%' } },
+    const wipeBox = h('div', { class: 'cv-wipe', 'data-page': p.id, 'data-wipe-key': p.id, style: { width: (Number(p.width) || 1280) + 'px', '--wipe': pct + '%' } },
       h('div', { class: 'cv-wipe-after' }, af),
       h('div', { class: 'cv-wipe-before' }, bf));
-    const handle = h('div', { class: 'cv-wipe-handle', title: '左右拖动对比改动前 / 改动后', onpointerdown: (e) => startWipeDrag(e, p.id, wipeBox) },
+    const handle = h('div', { class: 'cv-wipe-handle', title: '左右拖动对比前后版本', onpointerdown: (e) => startWipeDrag(e, p.id, wipeBox) },
       h('div', { class: 'cv-wipe-line' }),
       h('div', { class: 'cv-wipe-knob' }, '⇄'));
     wipeBox.append(handle);
-    const range = h('input', { type: 'range', class: 'cv-wipe-range', 'data-page': p.id, min: '0', max: '100', value: String(pct), oninput: (e) => setWipePos(p.id, e.target.value), onclick: (e) => e.stopPropagation() });
+    const range = h('input', { type: 'range', class: 'cv-wipe-range', 'data-page': p.id, 'data-wipe-key': p.id, min: '0', max: '100', value: String(pct), oninput: (e) => setWipePos(p.id, e.target.value), onclick: (e) => e.stopPropagation() });
     const cmpBox = h('div', { class: 'cv-cmp-box is-wipe', 'data-page': p.id },
       h('div', { class: 'cv-cmp-head', 'data-kind': 'page', 'data-id': p.id, 'data-unit': (p.change === 'added' || p.change === 'removed') ? p.id : null },
         h('span', { class: 'cv-cmp-title' }, h('span', { class: 'dot dot-' + status }), h('b', null, pageName(p)), p.route ? h('span', { class: 'route' }, p.route) : null, chgChip(status)),
         h('span', { class: 'cv-wipe-ctrl', onclick: (e) => e.stopPropagation() },
-          h('button', { class: 'lnk cv-leg-a', title: '滑块拉到最左，完整看改动后', onclick: () => setWipePos(p.id, 0) }, '改动后'),
+          h('button', { class: 'lnk cv-leg-a', title: '滑块拉到最左，完整看右侧版本', onclick: () => setWipePos(p.id, 0) }, sideLabel('after')),
           range,
-          h('button', { class: 'lnk cv-leg-b', title: '滑块拉到最右，完整看改动前', onclick: () => setWipePos(p.id, 100) }, '改动前'),
-          h('span', { class: 'cv-wipe-pct', 'data-page': p.id }, pct + '%'))),
+          h('button', { class: 'lnk cv-leg-b', title: '滑块拉到最右，完整看左侧版本', onclick: () => setWipePos(p.id, 100) }, sideLabel('before')),
+          h('span', { class: 'cv-wipe-pct', 'data-page': p.id, 'data-wipe-key': p.id }, pct + '%'))),
       wipeBox);
-    return h('div', { class: 'cv-group is-wipe', 'data-page': p.id }, left, cmpBox, right);
+    return h('div', { class: 'cv-group is-wipe', 'data-page': p.id }, cmpBox, bottomPanels);
   }
   const bf = pageFrame(p, 'before', true, false);
   const af = pageFrame(p, 'after', true, false);
   const cmpBox = h('div', { class: 'cv-cmp-box', 'data-page': p.id },
     h('div', { class: 'cv-cmp-head', 'data-kind': 'page', 'data-id': p.id, 'data-unit': (p.change === 'added' || p.change === 'removed') ? p.id : null },
       h('span', { class: 'cv-cmp-title' }, h('span', { class: 'dot dot-' + status }), h('b', null, pageName(p)), p.route ? h('span', { class: 'route' }, p.route) : null, chgChip(status)),
-      h('span', { class: 'cv-cmp-legend' }, h('span', { class: 'cv-leg-b' }, '改动前'), ' → ', h('span', { class: 'cv-leg-a' }, '改动后'))),
+      h('span', { class: 'cv-cmp-legend' }, h('span', { class: 'cv-leg-b' }, sideLabel('before')), ' → ', h('span', { class: 'cv-leg-a' }, sideLabel('after')))),
     h('div', { class: 'cv-pair', 'data-page': p.id },
       bf,
       h('div', { class: 'cv-bridge', 'aria-hidden': 'true' }, h('div', { class: 'cv-bridge-arrow' }, '→'), h('div', { class: 'cv-bridge-lbl' }, bridgeLbl)),
       af));
-  return h('div', { class: 'cv-group is-split', 'data-page': p.id }, left, cmpBox, right);
+  return h('div', { class: 'cv-group is-split', 'data-page': p.id }, cmpBox, bottomPanels);
 }
 const OV_W = { drawer: 440, modal: 560, menu: 300, popover: 320 };
 function overlayFrame(x, p, o) {
@@ -1386,13 +1969,14 @@ function revealPanel(n, p, o) {
       h('button', { class: 'lnk', onclick: (e) => { e.stopPropagation(); const sl = document.querySelector('#cv-world .wf-slot[data-id="' + CSS.escape(n.id) + '"][data-side="' + vs + '"]') || document.querySelector('#cv-world .wf-slot[data-id="' + CSS.escape(n.id) + '"]'); if (sl) focusEl(sl); } }, '看位置')),
     renderWF(n, p, sub));
 }
-/* Put each side panel next to the element that opens it: in split mode, before panels stay left of the
- * before frame and after panels stay right of the after frame; in single-frame modes, sidebar triggers go left. */
+/* Equalize wipe heights (pages + paired overlay panels), size bottom panel trays,
+ * and align side columns for single-frame unchanged pages. */
 function layoutPanels() {
   const w = worldEl(); if (!w) return;
   const wr = w.getBoundingClientRect(); const k = wr.width / (w.offsetWidth || 1) || 1;
   w.querySelectorAll('.cv-wipe').forEach((wp) => {
-    const bf = wp.querySelector('.cv-wipe-before > .cv-frame'), af = wp.querySelector('.cv-wipe-after > .cv-frame');
+    const bf = wp.querySelector('.cv-wipe-before > .cv-frame, .cv-wipe-before > .cv-ov');
+    const af = wp.querySelector('.cv-wipe-after > .cv-frame, .cv-wipe-after > .cv-ov');
     if (bf && af) {
       bf.style.minHeight = ''; af.style.minHeight = '';
       const mh = Math.max(bf.offsetHeight, af.offsetHeight);
@@ -1401,25 +1985,30 @@ function layoutPanels() {
   });
   w.querySelectorAll('.cv-group').forEach((g) => {
     const isDual = g.classList.contains('is-split') || g.classList.contains('is-wipe');
+    if (isDual) {
+      const mainBox = g.querySelector(':scope > .cv-cmp-box');
+      const area = g.querySelector(':scope > .cv-panels-area');
+      if (mainBox && area && mainBox.offsetWidth) area.style.maxWidth = mainBox.offsetWidth + 'px';
+      return;
+    }
     const L = g.querySelector('.cv-ovcol.left'), R = g.querySelector('.cv-ovcol.right'); if (!L || !R) return;
-    const beforeFr = g.querySelector('.cv-frame.cv-before'), afterFr = g.querySelector('.cv-frame.cv-after'), singleFr = g.querySelector('.cv-frame');
+    const singleFr = g.querySelector('.cv-frame');
     const drop = R.querySelector('.cv-ovdrop');
     const panels = [...g.querySelectorAll('.cv-ov')];
     const info = new Map();
     const gr = g.getBoundingClientRect();
     panels.forEach((pn) => {
-      const pSide = pn.dataset.side;
-      const frame = isDual ? (pSide === 'before' ? beforeFr : afterFr) : singleFr;
+      const frame = singleFr;
       const fr = frame ? frame.getBoundingClientRect() : gr;
       const ids = (pn.dataset.anchor || '').split(' ').filter(Boolean);
       let a = null, host = null;
       for (const id of ids) {
         if (frame) { a = frame.querySelector('[data-kind="node"][data-id="' + CSS.escape(id) + '"]'); if (a) break; }
-        const inPanel = panels.find((x) => x !== pn && (!isDual || x.dataset.side === pSide) && x.querySelector('[data-kind="node"][data-id="' + CSS.escape(id) + '"]'));
+        const inPanel = panels.find((x) => x !== pn && x.querySelector('[data-kind="node"][data-id="' + CSS.escape(id) + '"]'));
         if (inPanel) { host = inPanel; break; }
       }
       const r = a && a.getBoundingClientRect();
-      const side = isDual ? (pSide === 'before' ? 'L' : 'R') : (a && a.closest('.t-sidebar') && a.closest('.t-sidebar').getBoundingClientRect().right < (fr.left + fr.right) / 2 ? 'L' : 'R');
+      const side = a && a.closest('.t-sidebar') && a.closest('.t-sidebar').getBoundingClientRect().right < (fr.left + fr.right) / 2 ? 'L' : 'R';
       info.set(pn, { y: r ? (r.top - gr.top) / k : 1e9, side: side, host: host, kids: [] });
     });
     panels.forEach((pn) => { const x = info.get(pn); if (x.host) info.get(x.host).kids.push(pn); });
@@ -1505,11 +2094,11 @@ function unitDetail(u) {
     out.push(h('div', { class: 'ins-note' }, n.movedFrom ? '从别处移过来的。' : '被移到了别处。', h('button', { class: 'lnk', onclick: () => focusNode(p.id, other) }, '看另一处')));
   }
   const whole = u.change === 'added' || u.change === 'removed';
-  const before = u.change === 'added' ? h('div', { class: 'dt-void' }, isPage ? '改动前没有这个页面' : '改动前没有这个模块') : detailRender(n, p, 'before', whole);
+  const before = u.change === 'added' ? h('div', { class: 'dt-void' }, isPage ? (sideLabel('before') + '没有这个页面') : (sideLabel('before') + '没有这个模块')) : detailRender(n, p, 'before', whole);
   const after = u.change === 'removed' ? h('div', { class: 'dt-void' }, n.movedTo ? '移到了别处（点上面的「看另一处」）' : isPage ? '这个页面将被删除' : '这个模块将被删除') : detailRender(n, p, 'after', whole);
   out.push(h('div', { class: 'dt-cmp' },
-    h('div', { class: 'side-before' }, h('div', { class: 'side-t' }, '改动前'), before),
-    h('div', { class: 'side-after' }, h('div', { class: 'side-t' }, '改动后'), after)));
+    h('div', { class: 'side-before' }, h('div', { class: 'side-t' }, sideLabel('before')), before),
+    h('div', { class: 'side-after' }, h('div', { class: 'side-t' }, sideLabel('after')), after)));
   const ids = subtreeIds(n);
   const inter = [];
   p.overlays.forEach((x) => {
@@ -1518,7 +2107,7 @@ function unitDetail(u) {
     trigList(view(x, xs)).filter((tr) => ids.has(tr)).forEach((tr) => { const t = findNode(p, tr); inter.push(h('li', null, '点击 ', t ? nlabel(view(t.n, xs)) : '#' + tr, ' → 打开 ', h('button', { class: 'lnk', onclick: () => focusNode(p.id, x.id) }, '▸ ' + tname(x.type) + '「' + short(x.label || '', 18) + '」'))); });
   });
   if (!isPage && OVERLAY.has(bt(n.type))) { const ts = trigList(view(n, n.change === 'removed' ? 'before' : 'after')).map((tr) => findNode(p, tr)).filter(Boolean); inter.push(h('li', null, '由 ', ts.length ? ts.map((t, i) => [i ? '、' : '', h('button', { class: 'lnk', onclick: () => focusNode(p.id, t.n.id) }, nlabel(t.n))]) : '（未指定的元素）', ' 打开')); }
-  S.spec.flows.forEach((f) => {
+  CUR.flows.forEach((f) => {
     f.steps.forEach((st, i) => {
       if (!stepRefs(st).some((r) => ids.has(r)) && !(isPage && st.page === p.id)) return;
       inter.push(h('li', null, h('span', { class: 'chip sm' }, ACTORS[st.actor] || st.actor), ' ', h('button', { class: 'lnk', onclick: () => { ui.tab = 'flows'; ui.sel = { kind: 'step', id: st.id, side: st.change === 'removed' ? 'before' : 'after', flow: f.id }; save(); render(); scrollToSel(); } }, '流程「' + f.name + '」第 ' + (i + 1) + ' 步'), '：' + (st.text || ''), ' ', chgChip(st.change)));
@@ -1632,14 +2221,14 @@ document.addEventListener('pointercancel', (e) => endPointerDrag(e, false));
 /* Figma-style "Present": one screen at a time, clicking hotspots runs their interactions
  * (open overlay / navigate / toggle / switch state / close / back). Clicking elsewhere flashes the hotspots. */
 function startPlay(pid) {
-  const p = pageById(pid) || pageById(ui.page) || S.spec.pages.find((x) => x.change !== 'removed') || S.spec.pages[0];
+  const p = pageById(pid) || pageById(ui.page) || CUR.pages.find((x) => x.change !== 'removed') || CUR.pages[0];
   if (!p) { toast('没有可以演示的页面', true); return; }
   ui.play = { start: p.id, page: p.id, side: p.change === 'removed' ? 'before' : 'after', marks: false, ovs: [], stack: [], vis: {}, st: {}, anchor: {}, log: [], k: 1, top: true };
   ui.sel = null; render();
 }
 function stopPlay() { ui.play = null; ui.cam = null; render(); }
 function ovHolding(id) { const P = ui.play; for (let i = P.ovs.length - 1; i >= 0; i--) { const f = findNodeAnywhere(P.ovs[i]); const t = findNodeAnywhere(id); if (f && t && contains(f.e.n, t.e.n)) return P.ovs[i]; } return null; }
-function isOverlayId(id) { return S.spec.pages.some((p) => p.overlays.some((x) => x.id === id)); }
+function isOverlayId(id) { return CUR.pages.some((p) => p.overlays.some((x) => x.id === id)); }
 function applyIA(i, p, n) {
   const P = ui.play;
   const openOv = (id) => { if (P.ovs.indexOf(id) < 0) { P.ovs.push(id); P.anchor[id] = n.id; } };
@@ -1700,10 +2289,10 @@ function playOverlay(id, side) {
   return h('div', { class: 'pl-back pl-back-' + base + (base === 'modal' || base === 'drawer' ? ' dim' : ''), 'data-close': id }, box);
 }
 function renderPlay() {
-  const P = ui.play; const p = pageById(P.page) || S.spec.pages[0];
+  const P = ui.play; const p = pageById(P.page) || CUR.pages[0];
   const side = P.side;
   const gone = (side === 'after' && p.change === 'removed') || (side === 'before' && p.change === 'added');
-  const body = gone ? h('div', { class: 'pl-void' }, side === 'after' ? '这个页面在改动后被删除了' : '改动前没有这个页面') : renderWF(p.root, p, { side: side, ctx: 'play', parentLayout: 'col' });
+  const body = gone ? h('div', { class: 'pl-void' }, side === 'after' ? '这个页面在改动后被删除了' : (sideLabel('before') + '没有这个页面')) : renderWF(p.root, p, { side: side, ctx: 'play', parentLayout: 'col' });
   const frame = h('div', { class: 'pl-frame' + (P.marks ? ' marks' : ''), id: 'pl-frame', style: { width: (Number(p.width) || 1280) + 'px' } },
     h('div', { class: 'pl-fh' }, h('span', { class: 'dot dot-' + pageStatus(p) }), pageName(p), p.route ? h('span', { class: 'route' }, p.route) : null),
     h('div', { class: 'pl-fb' }, body),
@@ -1726,9 +2315,9 @@ function playSide(p) {
   const addC = () => { const t = ta.value.trim(); if (!t) { ta.focus(); return; } addComment({ kind: 'page', id: p.id }, '交互方式', sev.value, '［演示中：' + playContext() + '］' + t); toast('已记下，会出现在「反馈」里'); };
   return h('aside', { class: 'pl-side', id: 'pl-side' },
     h('div', { class: 'sec-t' }, '屏幕'),
-    S.spec.pages.map((q) => h('button', { class: 'cv-item' + (q.id === p.id ? ' on' : ''), onclick: () => playGo(q.id) }, h('span', { class: 'dot dot-' + pageStatus(q) }), ' ', pageName(q))),
+    CUR.pages.map((q) => h('button', { class: 'cv-item' + (q.id === p.id ? ' on' : ''), onclick: () => playGo(q.id) }, h('span', { class: 'dot dot-' + pageStatus(q) }), ' ', pageName(q))),
     UNITS.length ? [h('div', { class: 'sec-t' }, '看哪个版本'),
-      h('div', { class: 'seg' }, h('button', { class: side === 'before' ? 'on' : null, onclick: () => { P.side = 'before'; P.ovs = []; render(); } }, '改动前'), h('button', { class: side === 'after' ? 'on' : null, onclick: () => { P.side = 'after'; P.ovs = []; render(); } }, '改动后')),
+      h('div', { class: 'seg' }, h('button', { class: side === 'before' ? 'on' : null, onclick: () => { P.side = 'before'; P.ovs = []; render(); } }, sideLabel('before')), h('button', { class: side === 'after' ? 'on' : null, onclick: () => { P.side = 'after'; P.ovs = []; render(); } }, sideLabel('after'))),
       h('label', { class: 'trig-opt' }, h('input', { type: 'checkbox', checked: P.marks, style: 'width:auto', onchange: (e) => { P.marks = e.target.checked; render(); } }), ' 显示改动框')] : null,
     h('div', { class: 'sec-t' }, '现在能点的（' + items.length + '）'),
     items.length ? h('ul', { class: 'dt-list pl-ia' }, items.map((x) => h('li', null, h('button', { class: 'lnk', onclick: () => runIA(x[0].id, x[1].id) }, nlabel(withState(x[1], x[1], 'play'))), h('div', { class: 'hint' }, x[2].map((i) => (IA_VERB[i.action] || i.action) + ' ' + iaTargetName(i)).join('；'))))) : h('div', { class: 'hint' }, '这一屏没有写交互'),
@@ -1751,7 +2340,7 @@ function fitPlay() {
 
 // ------------------------------------------------------------------ flows
 function renderFlows() {
-  const flows = S.spec.flows;
+  const flows = CUR.flows;
   const out = h('div', { class: 'flows' });
   if (!flows.length) out.append(h('div', { class: 'empty' }, '本次变更没有描述流程变化。'));
   flows.forEach((f) => {
@@ -1764,8 +2353,8 @@ function renderFlows() {
   return out;
 }
 function flowSide(f, side) {
-  const title = h('div', { class: 'side-t' }, side === 'before' ? '改动前' : '改动后');
-  if (side === 'before' && f.change === 'added') return h('div', { class: 'side side-before' }, title, h('div', { class: 'frame void' }, '新流程 —— 改动前不存在'));
+  const title = h('div', { class: 'side-t' }, sideLabel(side));
+  if (side === 'before' && f.change === 'added') return h('div', { class: 'side side-before' }, title, h('div', { class: 'frame void' }, '新流程 —— ' + sideLabel('before') + '不存在'));
   if (side === 'after' && f.change === 'removed') return h('div', { class: 'side side-after' }, title, h('div', { class: 'frame void' }, '这个流程将被移除'));
   const steps = f.steps.filter((s) => visible(s, side));
   const actorKeys = [];
@@ -1798,14 +2387,14 @@ function flowSide(f, side) {
 // ------------------------------------------------------------------ backend
 function renderBackend() {
   const out = h('div', { class: 'be' });
-  if (!S.spec.backend.length) out.append(h('div', { class: 'empty' }, '本次变更没有描述后端变化。'));
+  if (!CUR.backend.length) out.append(h('div', { class: 'empty' }, '本次变更没有描述后端变化。'));
   else out.append(h('div', { class: 'compare' }, beSide('before'), beSide('after')));
   if (ui.mode === 'edit') out.append(h('div', { style: 'margin-top:12px' }, h('button', { onclick: () => mutate(opModAdd) }, '+ 新增模块')));
   return out;
 }
 function beSide(side) {
-  const mods = S.spec.backend.filter((m) => visible(m, side));
-  return h('div', { class: 'side side-' + side }, h('div', { class: 'side-t' }, side === 'before' ? '改动前' : '改动后'),
+  const mods = CUR.backend.filter((m) => visible(m, side));
+  return h('div', { class: 'side side-' + side }, h('div', { class: 'side-t' }, sideLabel(side)),
     h('div', { class: 'frame be-frame' }, mods.length ? mods.map((m) => modBox(m, side)) : h('div', { class: 'muted' }, '（无）')));
 }
 function modBox(m, side) {
@@ -1892,7 +2481,7 @@ function inspNode(s, compact) {
   const editable = ui.mode === 'edit' && s.side === 'after' && vis.has(n.id);
   const out = [];
   if (!compact) out.push(h('div', { class: 'ins-head' }, h('span', { class: 'ins-type' }, tname(v.type)), h('b', null, v.label || ''), chgChip(chgOf(n, s.side) ? n.change : null)));
-  if (!compact) out.push(h('div', { class: 'ins-path' }, h('span', null, (s.side === 'before' ? '改动前 › ' : '改动后 › ') + pathText(p, n, s.side)), h('code', null, '#' + n.id)));
+  if (!compact) out.push(h('div', { class: 'ins-path' }, h('span', null, (s.side === 'before' ? sideLabel('before') + ' › ' : sideLabel('after') + ' › ') + pathText(p, n, s.side)), h('code', null, '#' + n.id)));
   if (!compact && n.note) out.push(h('div', { class: 'ins-note' }, h('b', null, 'Agent 说明：'), n.note));
   const bb = !compact && buiBlock(v.type); if (bb) out.push(bb);
   if (!compact && n.before && n.change === 'modified') out.push(diffBox(n));
@@ -1913,8 +2502,8 @@ function inspNode(s, compact) {
 }
 function nodeEditor(p, n, e) {
   const pid = p.id, id = n.id;
-  const ctx = { target: { kind: 'node', page: pid, id: id }, name: (o) => ref(o), prefix: () => pfx(pageById(pid)) };
-  const res = () => { const pg = pageById(pid); const x = pg && findNode(pg, id); return x && x.n; };
+  const ctx = { target: { kind: 'node', page: pid, id: id }, name: (o) => ref(o), prefix: () => pfx(ePageById(pid)) };
+  const res = () => { const pg = ePageById(pid); const x = pg && findNode(pg, id); return x && x.n; };
   const ed = (f) => editor(res, f, ctx);
   const cont = isCont(n);
   const f = [];
@@ -1965,7 +2554,7 @@ function inspPage(s, compact) {
   }
   if (ui.mode === 'edit') {
     const ctx = { target: { kind: 'page', id: p.id }, name: (o) => '页面「' + o.name + '」', prefix: () => '' };
-    const res = () => pageById(s.id);
+    const res = () => ePageById(s.id);
     if (p.change !== 'removed') out.push(h('div', { class: 'fields' }, fld('页面名称', inp('p-name', p.name, editor(res, 'name', ctx))), fld('路由 / 地址', inp('p-route', p.route, editor(res, 'route', ctx))), h('div', { class: 'acts' }, btn('删除这个页面', () => mutate(() => opDeletePage(p.id)), 'danger'))));
     else out.push(h('div', { class: 'acts' }, btn('恢复这个页面', () => mutate(() => opRestorePage(p.id)))));
   }
@@ -1977,7 +2566,7 @@ function inspFlow(s) {
   if (f.note) out.push(h('div', { class: 'ins-note' }, h('b', null, 'Agent 说明：'), f.note));
   if (ui.mode === 'edit' && f.change !== 'removed') {
     const ctx = { target: { kind: 'flow', id: f.id }, name: (o) => '流程「' + o.name + '」', prefix: () => '' };
-    out.push(h('div', { class: 'fields' }, fld('流程名称', inp('f-name', f.name, editor(() => flowById(s.id), 'name', ctx))), h('div', { class: 'acts' }, btn('+ 添加步骤', () => mutate(() => opStepAdd(f.id, null))), btn('删除流程', () => mutate(() => opFlowDelete(f.id)), 'danger'))));
+    out.push(h('div', { class: 'fields' }, fld('流程名称', inp('f-name', f.name, editor(() => eFlowById(s.id), 'name', ctx))), h('div', { class: 'acts' }, btn('+ 添加步骤', () => mutate(() => opStepAdd(f.id, null))), btn('删除流程', () => mutate(() => opFlowDelete(f.id)), 'danger'))));
   }
   return out;
 }
@@ -1991,7 +2580,7 @@ function inspStep(s) {
   const editable = ui.mode === 'edit' && s.side === 'after' && visible(st, 'after') && f.change !== 'removed';
   if (editable) {
     const ctx = { target: { kind: 'step', flow: f.id, id: st.id }, name: (o) => '步骤' + stepLabel(o), prefix: () => '流程「' + f.name + '」：' };
-    const res = () => { const ff = flowById(s.flow); return ff && ff.steps.find((x) => x.id === s.id); };
+    const res = () => { const ff = eFlowById(s.flow); return ff && ff.steps.find((x) => x.id === s.id); };
     const actorOpts = Object.keys(ACTORS).map((k) => [k, ACTORS[k]]);
     out.push(h('div', { class: 'fields' },
       fld('谁来做', sel('s-actor', st.actor, actorOpts, editor(res, 'actor', ctx))),
@@ -2016,7 +2605,7 @@ function inspBe(s) {
   const editable = ui.mode === 'edit' && s.side === 'after' && visible(o, 'after') && visible(fb.m, 'after');
   if (editable) {
     const ctx = { target: { kind: 'be', id: o.id }, name: (x) => '「' + x.name + '」', prefix: () => '后端：' };
-    const res = () => { const r = findBe(s.id); return r && (r.item || r.m); };
+    const res = () => { const r = eFindBe(s.id); return r && (r.item || r.m); };
     const kinds = isItem ? BE_KINDS : MOD_KINDS;
     out.push(h('div', { class: 'fields' },
       fld('名称 / 签名', inp('b-name', o.name, editor(res, 'name', ctx))),
@@ -2031,7 +2620,28 @@ function inspBe(s) {
 }
 
 // ------------------------------------------------------------------ feedback
+function targetExists(t) {
+  if (!t) return false;
+  if (t.kind === 'node') { const p = pageById(t.page); return !!(p && findNode(p, t.id)); }
+  if (t.kind === 'page') return !!pageById(t.id);
+  if (t.kind === 'flow') return !!flowById(t.id);
+  if (t.kind === 'step') { const f = flowById(t.flow); return !!(f && f.steps.some((x) => x.id === t.id)); }
+  if (t.kind === 'be') return !!findBe(t.id);
+  return false;
+}
 function jump(t) {
+  if (HAS_MULTI_VER && !targetExists(t)) {
+    if (Array.isArray(t.ver) && t.ver.length === 2 && verByNum(t.ver[0]) && verByNum(t.ver[1])) {
+      ui.leftVer = Number(t.ver[0]); ui.rightVer = Number(t.ver[1]);
+      if (isHistoryView() && ui.mode === 'edit') ui.mode = 'view';
+      ui.cam = null; syncViewSpec();
+    }
+    if (!targetExists(t)) {
+      ui.leftVer = 0; ui.rightVer = LATEST_VER;
+      ui.cam = null; syncViewSpec();
+    }
+    computeUnits();
+  }
   if (t.kind === 'node' || t.kind === 'page') { ui.tab = 'canvas'; ui.page = t.page || t.id; ui.unit = t.kind === 'node' ? unitOf(t.page, t.id) : (UNIT_BY.has(t.id) ? t.id : null); }
   else if (t.kind === 'flow' || t.kind === 'step') ui.tab = 'flows';
   else if (t.kind === 'be') ui.tab = 'backend';
@@ -2199,10 +2809,11 @@ document.addEventListener('keyup', (e) => { if (e.key === ' ') { ui.space = fals
 window.addEventListener('resize', () => { if (ui.tab === 'canvas' && ui.cam) applyCam(); });
 
 window.smyw = {
-  get state() { return S; }, ui: ui, render: render, undo: undo, redo: redo, setMode: setMode, setTab: setTab, setDiffView: setDiffView, setDiffMode: setDiffMode, setShowPins: setShowPins, setWipePos: setWipePos,
+  get state() { return S; }, get viewSpec() { return CUR; }, get versions() { return VERSIONS.map((v) => ({ version: v.version, note: v.note, stage: v.stage })); },
+  ui: ui, render: render, undo: undo, redo: redo, setMode: setMode, setTab: setTab, setVersions: setVersions, setDiffView: setDiffView, setDiffMode: setDiffMode, setShowPins: setShowPins, setWipePos: setWipePos,
   setPage: (id) => { ui.page = id; ui.sel = null; render(); },
   play: { start: startPlay, stop: stopPlay, click: (pid, id) => runIA(pid, id), back: () => playBack(), get state() { return ui.play; } },
-  get units() { computeUnits(); return UNITS.map((u) => Object.assign({}, u)); },
+  get units() { syncViewSpec(); computeUnits(); return UNITS.map((u) => Object.assign({}, u)); },
   focusUnit: focusUnit, focusNode: focusNode, fit: () => fitCam(false), zoomAt: zoomAt,
   op: {
     move: (pid, id, dest) => mutate(() => opMove(pid, id, dest)),
@@ -2211,7 +2822,7 @@ window.smyw = {
     restore: (pid, id) => mutate(() => opRestore(pid, id)),
     convert: (pid, id, kind) => mutate(() => opConvert(pid, id, kind || 'dialog')),
     sibling: (pid, id, dir) => mutate(() => opSibling(pid, id, dir)),
-    edit: (pid, id, field, val) => editor(() => { const p = pageById(pid); const e = p && findNode(p, id); return e && e.n; }, field, { target: { kind: 'node', page: pid, id: id }, name: ref, prefix: () => pfx(pageById(pid)) })(val),
+    edit: (pid, id, field, val) => editor(() => { const p = ePageById(pid); const e = p && findNode(p, id); return e && e.n; }, field, { target: { kind: 'node', page: pid, id: id }, name: ref, prefix: () => pfx(ePageById(pid)) })(val),
     stepMove: (fid, id, dir) => mutate(() => opStepMove(fid, id, dir)),
     comment: (target, category, severity, text) => addComment(target, category, severity, text)
   },

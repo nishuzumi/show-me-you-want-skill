@@ -69,7 +69,8 @@ whenToUse: 用户提出新功能、改版或重构，且会新增/删除/修改�
 - **原型文字只写界面真实文案，不要把注释塞进 `label` / `text`**：像「原平铺卡片 1/4」「点击后展开」「供安全审计」这类说明请全部写进 `note`——预览里会渲染成类似 Figma 的角落悬浮注释气泡（悬停查看，不污染界面排版）。
 - **自动继承项目主题（0 额外 token）**：`build.mjs` 会自动从目标项目的 `src/app/globals.css` / `src/index.css` 等文件提取 `:root` CSS 变量（主色、背景、卡片、边框、圆角）应用到原型上；需要自定义时也可以在 spec 顶层写可选的 `"theme": { "primary": "#4F46E5", "radius": "6px" }`。
 - `note` 用一句话写「为什么这么改」，会出现在悬浮注释气泡、改动清单和详情里。
-- `id` 要稳定、有语义（kebab-case），并在整个 spec 内唯一，因为反馈会用 id 引用元素。
+- `versionNote`（顶层可选字符串）：多轮迭代时用一句话写「这一版相对上一版改了什么」（如 `"收敛为 3 格概览，去掉页头冗余按钮"`），会直接显示在预览顶部的版本对比下拉框里。
+- `id` 要稳定、有语义（kebab-case），并在整个 spec 内唯一，因为反馈和多版本 diff 都会按 id 对齐元素。**跨版本迭代修改同一个模块/按钮/步骤时，务必保留原 `id`**（不要改名或重新编号），这样才能在任意两个版本间精确展示修改与跨容器移动。
 - `questions`：需要用户拍板的点写在这里（可带 `options`），不要藏在 summary 里。
 - `flows`：按用户实际操作顺序写步骤，`actor` 取 user / frontend / backend / db / external / system，`fn` 写函数或接口，`node` 写这一步发生在哪个界面元素上（id，可以是数组）。详情面板靠它显示「相关交互」，流程页也能一键定位回界面。
 - `backend`：模块 → 条目（api / function / model / field / table / job / event / config）。
@@ -82,6 +83,11 @@ node $SKILL/scripts/build.mjs .smyw/<dir>/spec.json
 ~~~
 
 出现 ✖ 必须修好；出现 ⚠ 要逐条看（例如 modified 却没有 before/note，用户就看不出改了什么）。
+
+**多版本自动归档与任意版本对比**：
+- 每次对 `spec.json` 构建成功时，`build.mjs` 会自动把当前版本归档为同目录下的 `spec-v<version>.json`（需要跳过时可加 `--no-archive`），并扫描同目录全部 `spec-v*.json` 一起打进单文件 `preview.html`（自动提取 `v0 现状` 与 `v1..vN` 各版快照）。
+- 只有一个版本时，预览保持 `改动前 → 改动后` 不变；当存在多轮迭代（`v1`、`v2`、`v3`…）时，预览顶部会出现版本对比栏，**默认展示上一版 → 最新版（`v(N-1) → vN`）**，支持任意切换左右两个版本，也可一键切换「对比现状 `v0→vN` / 只看本轮 `v(N-1)→vN`」。
+- 每次迭代更新 `spec.json` 时，把 `version` 递增（`1 → 2 → 3`）并写一句 `versionNote`，**不要删除旧的 `spec-v*.json`**，直接重新 `build.mjs` 即可。
 
 ### 4. 交给用户
 预览打开后是一张可拖动、可缩放的画布：

@@ -30,10 +30,21 @@ code{font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .seg button{border:none;border-radius:0}
 .seg button.on{background:var(--ink);color:#fff}
 .cnt{display:inline-block;min-width:17px;padding:0 5px;margin-left:4px;border-radius:9px;background:var(--purple);color:#fff;font-size:11px;line-height:17px;text-align:center}
-.tabs{display:flex;gap:2px;padding:0 12px;background:#fff;border-bottom:1px solid var(--line2);overflow-x:auto}
-.tabs button{border:none;border-bottom:2px solid transparent;border-radius:0;padding:8px 12px;background:none;color:var(--muted)}
-.tabs button.on{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+.tabs{display:flex;align-items:center;gap:2px;padding:0 12px;background:#fff;border-bottom:1px solid var(--line2);overflow-x:auto}
+.tabs>button{border:none;border-bottom:2px solid transparent;border-radius:0;padding:8px 12px;background:none;color:var(--muted)}
+.tabs>button.on{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
 .tabs .n{margin-left:4px;color:var(--faint);font-weight:400}
+.ver-bar{margin-left:auto;display:inline-flex;align-items:center;gap:6px;padding:4px 0 4px 12px;flex:none}
+.ver-lbl{font-size:11.5px;color:var(--muted);white-space:nowrap}
+.ver-sel{width:auto;max-width:210px;height:27px;padding:2px 8px;font-size:12px;border:1px solid var(--line);border-radius:6px;background:#fafbfc;color:var(--ink);cursor:pointer}
+.ver-sel:hover{border-color:#9ca3af;background:#fff}
+.ver-arr{color:var(--faint);font-weight:600;font-size:12px}
+.ver-btn{height:27px;padding:0 9px;font-size:11.5px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink)}
+.ver-btn:hover{background:#f0f1f4}
+.ver-btn.on{background:var(--blue-bg);border-color:#b9c6f3;color:var(--blue);font-weight:600}
+.ver-banner{justify-content:space-between}
+.ver-back{padding:2px 9px;font-size:11.5px;border-color:#b9c6f3;background:#fff;color:var(--blue);font-weight:550}
+.ver-back:hover{background:#eef2ff}
 .banner{padding:6px 16px;font-size:12px;background:var(--amber-bg);color:#6f520f;border-bottom:1px solid #f0e2bd;display:flex;gap:8px;align-items:center}
 .banner.info{background:var(--blue-bg);color:#2b3d8c;border-color:#d8dffa}
 .body{flex:1;display:flex;min-height:0}
@@ -656,7 +667,7 @@ button{border-radius:6px;border-color:#d4d4d8}
 .cv-wipe{position:relative;flex:none;user-select:none}
 .cv-wipe-after{position:relative;z-index:1;isolation:isolate}
 .cv-wipe-before{position:absolute;inset:0;pointer-events:none;clip-path:inset(0 calc(100% - var(--wipe,50%)) 0 0);z-index:10;isolation:isolate}
-.cv-wipe-before>.cv-frame{pointer-events:auto}
+.cv-wipe-before>.cv-frame,.cv-wipe-before>.cv-ov{pointer-events:auto}
 .cv-wipe-handle{position:absolute;top:-6px;bottom:-6px;left:var(--wipe,50%);transform:translateX(-50%);width:36px;z-index:30;cursor:ew-resize;display:flex;align-items:center;justify-content:center;touch-action:none}
 .cv-wipe-line{position:absolute;top:0;bottom:0;left:50%;transform:translateX(-50%);width:3px;background:linear-gradient(to bottom,var(--red),var(--ui-primary,#4f46e5),var(--green));box-shadow:0 0 0 1px rgba(255,255,255,.85)}
 .cv-wipe-knob{position:relative;z-index:2;width:36px;height:36px;border-radius:999px;background:linear-gradient(135deg,var(--red),var(--green));color:#fff;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;border:3px solid #fff;box-shadow:0 4px 14px rgba(15,23,42,.28)}
@@ -664,6 +675,33 @@ button{border-radius:6px;border-color:#d4d4d8}
 .cv-wipe-ctrl{display:inline-flex;align-items:center;gap:8px;font-size:12px}
 .cv-wipe-range{width:140px;accent-color:var(--ui-primary,#4f46e5);cursor:pointer}
 .cv-wipe-pct{min-width:34px;text-align:right;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:#64748b}
+
+/* paired interactive panels tray below dual-mode pages */
+.cv-group.is-split,.cv-group.is-wipe{flex-direction:column;gap:28px;align-items:flex-start}
+.cv-panels-area{width:100%;display:flex;flex-direction:column;gap:14px;background:rgba(255,255,255,.55);border:1px dashed #cbd5e1;border-radius:14px;padding:16px 20px 20px}
+.cv-panels-head{display:flex;align-items:center;gap:10px;font-size:13px;color:#334155}
+.cv-panels-grid{display:flex;flex-wrap:wrap;gap:22px;align-items:flex-start}
+.cv-cmp-box.cv-ov-cmp{padding:12px 16px 16px;border-radius:12px;background:#fff}
+.cv-ov-cmp-head{margin-bottom:12px;padding-bottom:8px;cursor:default;align-items:flex-start;flex-wrap:wrap}
+.cv-ov-cmp-meta{display:flex;flex-direction:column;gap:4px;min-width:0}
+.cv-ov-cmp-meta .cv-cmp-title{font-size:13.5px}
+.cv-ov-trig{font-size:11.5px;color:var(--purple);display:inline-flex;align-items:center;gap:3px;flex-wrap:wrap}
+.cv-ov-trig.muted{color:var(--faint)}
+.cv-ov-bridge{width:56px}
+.cv-ov-bridge .cv-bridge-arrow{width:34px;height:34px;font-size:17px}
+.cv-ov-pair{align-items:stretch}
+.cv-ov-pair>.cv-ov,.cv-ov-wipe .cv-ov{margin:0;box-shadow:none;border:1px solid var(--ui-border,#e4e4e7);background:var(--ui-bg,#fafafa)}
+.cv-ov-pair>.cv-ov.cv-ov-before,.cv-ov-wipe .cv-ov.cv-ov-before{border-top:3px solid var(--red)}
+.cv-ov-pair>.cv-ov.cv-ov-after,.cv-ov-wipe .cv-ov.cv-ov-after{border-top:3px solid var(--green)}
+.cv-ovh-side{margin-bottom:8px;justify-content:flex-start}
+.cv-ov-solo{display:flex;flex-direction:column;gap:8px;background:#fff;border:1.5px solid #cbd5e1;border-radius:12px;padding:12px 14px 14px;box-shadow:0 2px 10px rgba(15,23,42,.05)}
+.cv-ov-solo.is-added{border-color:#9fdcb9;background:#fbfffd}
+.cv-ov-solo.is-removed{border-color:#f2b8ba;background:#fffafa}
+.cv-ov-solo.is-unchanged{border-color:#e2e8f0;background:#f8fafc}
+.cv-ov-solo>.cv-ov{box-shadow:none;border:1px solid var(--ui-border,#e4e4e7);background:var(--ui-bg,#fafafa);padding:10px}
+.cv-ov-solo.is-unchanged>.cv-ov{background:#fff}
+.cv-ov-only{font-size:11px;color:var(--muted);font-weight:500}
+.cv-panels-grid>.cv-ovdrop{align-self:stretch;display:flex;align-items:center;justify-content:center;min-height:110px}
 
 /* sticky inspector top bar & docked bottom comment box */
 .inspector{padding:0;overflow:hidden;gap:0}

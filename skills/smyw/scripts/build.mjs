@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // smyw build: validate a change spec and inline it into one self-contained preview HTML.
 // Usage: node build.mjs <spec.json> [-o preview.html] [--check]
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { dirname, resolve, join, relative } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
+import { dirname, resolve, join, relative, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -23,12 +23,13 @@ function usage(code) {
 }
 
 const args = process.argv.slice(2);
-let specPath = null, out = null, checkOnly = false, noTheme = false;
+let specPath = null, out = null, checkOnly = false, noTheme = false, noArchive = false;
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
   if (a === '-o' || a === '--out') out = args[++i];
   else if (a === '--check') checkOnly = true;
   else if (a === '--no-theme') noTheme = true;
+  else if (a === '--no-archive') noArchive = true;
   else if (a === '-h' || a === '--help') usage(0);
   else if (!specPath) specPath = a;
   else usage(2);
@@ -59,13 +60,22 @@ const css = readFileSync(join(assets, 'style.css'), 'utf8');
 const runtime = readFileSync(join(assets, 'runtime.js'), 'utf8');
 const themeRes = noTheme ? { css: '', source: null } : extractProjectTheme(specPath, spec);
 if (themeRes.source) console.log('· 主题：已从 ' + themeRes.source + ' 提取项目配色与圆角');
-const specJson = JSON.stringify(spec).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
-const buiJson = JSON.stringify(BUI).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+if (!noArchive) archiveCurrentSpec(specPath, raw, spec);
+const versions = collectVersions(specPath, spec);
+if (versions.length > 2) {
+  const prev = versions[versions.length - 2].version, latest = versions[versions.length - 1].version;
+  console.log('· 历史版本：' + versions.map((v) => 'v' + v.version + (v.version === 0 ? '（现状）' : '')).join(' → ') + '（默认对比 v' + prev + ' → v' + latest + '）');
+}
+const escJson = (o) => JSON.stringify(o).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+const specJson = escJson(spec);
+const versionsJson = escJson(versions);
+const buiJson = escJson(BUI);
 const html = template
   .replace('__TITLE__', () => escapeHtml((spec.title || 'smyw') + ' · 变更预览'))
   .replace('/*__STYLE__*/', () => css + (themeRes.css ? '\n' + themeRes.css : ''))
   .replace('/*__RUNTIME__*/', () => runtime.replace(/<\/script/gi, '<\\/script'))
   .replace('__BUI__', () => buiJson)
+  .replace('__VERSIONS__', () => versionsJson)
   .replace('__SPEC__', () => specJson);
 const outPath = resolve(out || join(dirname(specPath), 'preview.html'));
 mkdirSync(dirname(outPath), { recursive: true });
@@ -74,6 +84,126 @@ console.log('✔ 已生成 ' + outPath + '（' + Math.round(html.length / 1024) 
 console.log('  ' + pathToFileURL(outPath).href);
 
 function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
+
+/* Auto-archive current spec.json as spec-v<N>.json so manual version bumps never lose prior history. */
+function archiveCurrentSpec(specFile, rawText, specObj) {
+  const ver = Number(specObj.version) || 1;
+  const dir = dirname(specFile);
+  if (/^spec-v\d+\.json$/.test(basename(specFile))) return;
+  const dest = join(dir, 'spec-v' + ver + '.json');
+  if (resolve(dest) === resolve(specFile)) return;
+  try {
+    if (existsSync(dest) && readFileSync(dest, 'utf8') === rawText) return;
+    writeFileSync(dest, rawText);
+  } catch { /* ignore archive write error */ }
+}
+
+/* Extract a pure before or after snapshot from a merged smyw spec tree. */
+function isEmptyVal(v) { return v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0); }
+function extractItemArr(arr, side) {
+  if (!Array.isArray(arr)) return undefined;
+  const out = [];
+  for (const x of arr) {
+    if (x && typeof x === 'object') {
+      if (side === 'before' && x.change === 'added') continue;
+      if (side === 'after' && x.change === 'removed') continue;
+      const lbl = side === 'before' && x.before != null ? (typeof x.before === 'object' ? x.before.label : x.before) : x.label;
+      if (lbl != null) out.push(String(lbl));
+    } else if (x != null) out.push(String(x));
+  }
+  return out;
+}
+function extractObj(o, side, childKeys) {
+  if (!o || typeof o !== 'object') return null;
+  if (side === 'before' && o.change === 'added') return null;
+  if (side === 'after' && o.change === 'removed') return null;
+  const out = {};
+  const skip = new Set(['change', 'before', 'movedFrom', 'movedTo', '_um', ...childKeys]);
+  for (const k of Object.keys(o)) {
+    if (skip.has(k)) continue;
+    if (side === 'before' && k === 'note') continue;
+    if (k === 'items' && !childKeys.includes('items')) { out.items = extractItemArr(o.items, side); continue; }
+    if (k === 'columns') { out.columns = extractItemArr(o.columns, side); continue; }
+    out[k] = JSON.parse(JSON.stringify(o[k]));
+  }
+  if (side === 'before' && o.before && typeof o.before === 'object') {
+    for (const k of Object.keys(o.before)) {
+      const bv = o.before[k];
+      if (isEmptyVal(bv)) delete out[k];
+      else if (k === 'items' && !childKeys.includes('items')) out.items = extractItemArr(bv, side);
+      else if (k === 'columns') out.columns = extractItemArr(bv, side);
+      else out[k] = JSON.parse(JSON.stringify(bv));
+    }
+  }
+  for (const ck of childKeys) {
+    if (ck === 'root') {
+      out.root = o.root ? extractObj(o.root, side, ['children']) : { type: 'page', children: [] };
+    } else if (Array.isArray(o[ck])) {
+      const subKeys = ck === 'children' || ck === 'overlays' ? ['children'] : [];
+      const kids = o[ck].map((c) => extractObj(c, side, subKeys)).filter(Boolean);
+      if (kids.length || ck !== 'children') out[ck] = kids;
+    }
+  }
+  return out;
+}
+function extractSpecSide(sp, side) {
+  const out = { title: sp.title || '未命名变更', version: side === 'before' ? 0 : (Number(sp.version) || 1), stage: side === 'before' ? 'baseline' : (sp.stage || 'prototype') };
+  if (side === 'after') {
+    if (sp.summary) out.summary = sp.summary;
+    if (sp.versionNote) out.versionNote = sp.versionNote;
+    if (Array.isArray(sp.changes)) out.changes = sp.changes;
+    if (Array.isArray(sp.questions)) out.questions = sp.questions;
+  }
+  out.pages = (Array.isArray(sp.pages) ? sp.pages : []).map((p) => extractObj(p, side, ['root', 'overlays'])).filter(Boolean);
+  out.flows = (Array.isArray(sp.flows) ? sp.flows : []).map((f) => extractObj(f, side, ['steps'])).filter(Boolean);
+  out.backend = (Array.isArray(sp.backend) ? sp.backend : []).map((m) => extractObj(m, side, ['items'])).filter(Boolean);
+  return out;
+}
+function collectVersions(specFile, curSpec) {
+  const curVer = Number(curSpec.version) || 1;
+  const dir = dirname(specFile);
+  const byVer = new Map();
+  try {
+    for (const f of readdirSync(dir)) {
+      const m = /^spec-v(\d+)\.json$/.exec(f);
+      if (!m) continue;
+      try {
+        const obj = JSON.parse(readFileSync(join(dir, f), 'utf8'));
+        const v = Number(obj.version) || Number(m[1]);
+        if (v > 0 && v <= curVer) byVer.set(v, obj);
+      } catch { /* skip unreadable history */ }
+    }
+  } catch { /* ignore */ }
+  byVer.set(curVer, curSpec);
+  const nums = [...byVer.keys()].sort((a, b) => a - b);
+  // Build v0 baseline by merging the first-seen before state of every existing page / flow / module across v1..vN.
+  const firstSpec = byVer.get(nums[0]);
+  const v0 = extractSpecSide(firstSpec, 'before');
+  const seenPage = new Set(v0.pages.map((p) => p.id).filter(Boolean));
+  const seenFlow = new Set(v0.flows.map((f) => f.id).filter(Boolean));
+  const seenBe = new Set(v0.backend.map((m) => m.id).filter(Boolean));
+  const addedEarlier = { pages: new Set(), flows: new Set(), backend: new Set() };
+  const recordAdded = (sp) => {
+    (sp.pages || []).forEach((p) => { if (p && p.change === 'added' && p.id) addedEarlier.pages.add(p.id); });
+    (sp.flows || []).forEach((f) => { if (f && f.change === 'added' && f.id) addedEarlier.flows.add(f.id); });
+    (sp.backend || []).forEach((m) => { if (m && m.change === 'added' && m.id) addedEarlier.backend.add(m.id); });
+  };
+  recordAdded(firstSpec);
+  for (let i = 1; i < nums.length; i++) {
+    const sp = byVer.get(nums[i]);
+    const b = extractSpecSide(sp, 'before');
+    b.pages.forEach((p) => { if (p.id && !seenPage.has(p.id) && !addedEarlier.pages.has(p.id)) { v0.pages.push(p); seenPage.add(p.id); } });
+    b.flows.forEach((f) => { if (f.id && !seenFlow.has(f.id) && !addedEarlier.flows.has(f.id)) { v0.flows.push(f); seenFlow.add(f.id); } });
+    b.backend.forEach((m) => { if (m.id && !seenBe.has(m.id) && !addedEarlier.backend.has(m.id)) { v0.backend.push(m); seenBe.add(m.id); } });
+    recordAdded(sp);
+  }
+  const out = [{ version: 0, note: '改动前现状', stage: 'baseline', spec: v0 }];
+  for (const v of nums) {
+    const sp = byVer.get(v);
+    out.push({ version: v, note: sp.versionNote ? String(sp.versionNote) : '', stage: sp.stage || 'prototype', spec: extractSpecSide(sp, 'after') });
+  }
+  return out;
+}
 
 /* Zero-token project theme extraction: find the target repo's globals.css / index.css and map :root
  * semantic tokens (--background, --primary, --card, --border, --radius…) onto --ui-* prototype vars. */
@@ -154,6 +284,7 @@ function validate(spec) {
   const bump = (b, o) => { if (o && b[o.change] !== undefined) b[o.change]++; };
   if (!spec || typeof spec !== 'object' || Array.isArray(spec)) return { errors: ['spec 顶层必须是 JSON 对象'], warnings, summary: '' };
   if (!spec.title) warnings.push('缺少 title（预览标题）');
+  if (spec.versionNote != null && typeof spec.versionNote !== 'string') errors.push('versionNote 必须是字符串（这一版的简短说明）');
   if (spec.stage && !['prototype', 'implementing', 'done'].includes(spec.stage)) warnings.push('stage 应为 prototype / implementing / done，收到 "' + spec.stage + '"');
   for (const k of ['pages', 'flows', 'backend', 'changes', 'questions']) if (spec[k] !== undefined && !Array.isArray(spec[k])) errors.push(k + ' 必须是数组');
   const ids = new Map();
