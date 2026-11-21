@@ -11,7 +11,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const skill = join(root, 'skills', 'smyw');
 const out = join(root, 'docs', 'screenshots');
 mkdirSync(out, { recursive: true });
-for (const ex of ['helpdesk-ai', 'task-tags', 'base-ui']) execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(skill, 'examples', ex, 'spec.json')], { stdio: 'ignore' });
+for (const ex of ['helpdesk-ai', 'task-tags', 'base-ui']) execFileSync('node', [join(skill, 'scripts', 'build.mjs'), '--no-archive', join(skill, 'examples', ex, 'spec.json')], { stdio: 'ignore' });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const dport = 9400 + Math.floor(Math.random() * 400);
@@ -54,9 +54,9 @@ await ev('smyw.ui.sel = null; smyw.ui.unit = null; smyw.ui.showLinks = true; smy
 await shot('05-trigger-links');
 await ev('__fit(["#cv-world [data-id=customer]", ".cv-ov[data-ov=c-sim-1-detail]", ".cv-ov[data-ov=assign-menu]", ".cv-ov[data-ov=as-3-sub]"], 30); return 1');
 await shot('05b-side-panels');
-await ev('smyw.ui.showLinks = false; smyw.ui.showFn = true; smyw.ui.showComp = true; smyw.ui.fade = true; smyw.render(); __fit(["#cv-world [data-id=detail]"], 30); return 1');
+await ev('smyw.ui.showLinks = false; smyw.ui.showFn = true; smyw.ui.showComp = true; smyw.setDiffMode(true); __fit(["#cv-world [data-id=detail]"], 30); return 1');
 await shot('06-toolbar-toggles');
-await ev('smyw.ui.showFn = false; smyw.ui.showComp = false; smyw.ui.fade = false; smyw.setTab("flows"); return 1');
+await ev('smyw.ui.showFn = false; smyw.ui.showComp = false; smyw.setDiffMode(false); smyw.setTab("flows"); return 1');
 await shot('07-flows');
 await ev('[...document.querySelectorAll(".page-link")].find(b => b.textContent.includes("在界面上定位")).click(); return 1'); await sleep(500);
 await shot('08-flow-jump-to-canvas');
@@ -64,7 +64,7 @@ await ev('smyw.setTab("backend"); return 1');
 await shot('09-backend');
 
 console.log('play mode');
-await ev('smyw.ui.showLinks = false; smyw.ui.showFn = false; smyw.ui.showComp = false; smyw.ui.fade = false; smyw.ui.sel = null; smyw.ui.unit = null; smyw.setTab("canvas"); smyw.play.start("inbox"); return 1'); await sleep(400);
+await ev('smyw.ui.showLinks = false; smyw.ui.showFn = false; smyw.ui.showComp = false; smyw.setDiffMode(false); smyw.ui.sel = null; smyw.ui.unit = null; smyw.setTab("canvas"); smyw.play.start("inbox"); return 1'); await sleep(400);
 await shot('21-play');
 await ev('document.querySelector("#pl-frame [data-id=t-title]").click(); return 1'); await sleep(120);
 await shot('22-play-hotspots');

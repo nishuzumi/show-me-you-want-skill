@@ -18,9 +18,11 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok }); console.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 cpSync(join(skill, 'examples', 'task-tags', 'spec.json'), join(work, 'spec.json'));
+const helpdeskHtml = join(work, 'helpdesk-ai.html');
+const baseUiHtml = join(work, 'base-ui.html');
 execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(work, 'spec.json')], { stdio: 'inherit' });
-execFileSync('node', [join(skill, 'scripts', 'build.mjs'), '--no-archive', join(skill, 'examples', 'helpdesk-ai', 'spec.json')], { stdio: 'ignore' });
-execFileSync('node', [join(skill, 'scripts', 'build.mjs'), '--no-archive', join(skill, 'examples', 'base-ui', 'spec.json')], { stdio: 'ignore' });
+execFileSync('node', [join(skill, 'scripts', 'build.mjs'), '--no-archive', '-o', helpdeskHtml, join(skill, 'examples', 'helpdesk-ai', 'spec.json')], { stdio: 'ignore' });
+execFileSync('node', [join(skill, 'scripts', 'build.mjs'), '--no-archive', '-o', baseUiHtml, join(skill, 'examples', 'base-ui', 'spec.json')], { stdio: 'ignore' });
 execFileSync('mkdir', ['-p', shots]);
 
 const dport = 9300 + Math.floor(Math.random() * 500);
@@ -46,7 +48,18 @@ const ev = async (expr) => {
   return r.result.result.value;
 };
 const shot = async (name) => { const r = await send('Page.captureScreenshot', { format: 'png' }); writeFileSync(join(shots, name + '.png'), Buffer.from(r.result.data, 'base64')); };
-const open = async (file) => { await send('Page.navigate', { url: 'file://' + file }); for (let i = 0; i < 40; i++) { await sleep(150); try { if (await ev('return !!window.smyw && !!document.getElementById("cv-world")')) break; } catch {} } await sleep(300); };
+const open = async (file) => {
+  await send('Page.navigate', { url: 'file://' + file });
+  let ready = false, lastErr = null;
+  for (let i = 0; i < 40; i++) {
+    await sleep(150);
+    try {
+      if (await ev('return !!window.smyw && !!document.getElementById("cv-world")')) { ready = true; break; }
+    } catch (e) { lastErr = e.message; }
+  }
+  if (!ready) throw new Error('preview failed to boot: file://' + file + (lastErr ? ' (' + lastErr + ')' : ''));
+  await sleep(300);
+};
 const FIND = 'const find = (n, x) => n.id === x ? n : (n.children||[]).map(c => find(c, x)).find(Boolean); const P = smyw.state.spec.pages[0];';
 await send('Runtime.enable'); await send('Page.enable');
 await send('Emulation.setDeviceMetricsOverride', { width: 1680, height: 1000, deviceScaleFactor: 1, mobile: false });
@@ -159,9 +172,55 @@ const fbx = await ev('return smyw.exportJSON()');
 check('copied feedback carries only the patch by default (much smaller than the full spec)', /smyw-patch/.test(pasted) && !/revisedSpec（备用/.test(pasted) && pasted.length * 2 < fullMd.length, { pasted: pasted.length, full: fullMd.length, ops: fbx.patch.ops.length });
 writeFileSync(join(work, 'feedback-v1.md'), pasted);
 // the patch applied to the spec on disk must give exactly the full revised spec
-const canon = (o) => Array.isArray(o) ? o.map(canon) : o && typeof o === 'object' ? Object.keys(o).filter((k) => !['version', 'basedOnVersion'].includes(k) && !(Array.isArray(o[k]) && !o[k].length)).sort().reduce((r, k) => (r[k] = canon(o[k]), r), {}) : o;
-const dry = JSON.parse(execFileSync('node', [join(skill, 'scripts', 'apply-feedback.mjs'), join(work, 'feedback-v1.md'), join(work, 'spec.json'), '--dry-run']).toString().split('\n').slice(1).join('\n'));
-check('applying the patch reproduces the full revised spec exactly', JSON.stringify(canon(dry)) === JSON.stringify(canon(fbx.revisedSpec)));
+const canon = (o) => Array.isArray(o) ? o.map(canon) : o && typeof o === 'object' ? Object.keys(o).filter((k) => !['version', 'basedOnVersion', 'basedOnHash', 'versionNote'].includes(k) && !(k === 'change' && o[k] === 'unchanged') && !(Array.isArray(o[k]) && !o[k].length)).sort().reduce((r, k) => (r[k] = canon(o[k]), r), {}) : o;
+const dry = JSON.parse(execFileSync('node', [join(skill, 'scripts', 'apply-feedback.mjs'), join(work, 'feedback-v1.md'), join(work, 'spec.json'), '--dry-run'], { stdio: ['ignore', 'pipe', 'pipe'] }).toString());
+check('smyw-patch@2 dry-run outputs pure JSON on stdout and matches revisedSpec', fbx.patch.format === 'smyw-patch@2' && !!fbx.patch.baseHash && JSON.stringify(canon(dry)) === JSON.stringify(canon(fbx.revisedSpec)));
+writeFileSync(join(work, 'feedback-v1-full.md'), fullMd);
+const fullDry = JSON.parse(execFileSync('node', [join(skill, 'scripts', 'apply-feedback.mjs'), join(work, 'feedback-v1-full.md'), join(work, 'spec.json'), '--use-full', '--dry-run'], { stdio: ['ignore', 'pipe', 'pipe'] }).toString());
+check('--use-full applies attached revisedSpec cleanly and strips basedOnHash/versionNote', !fullDry.basedOnHash && !fullDry.versionNote && JSON.stringify(canon(fullDry)) === JSON.stringify(canon(fbx.revisedSpec)));
+// same-version content drift (baseHash mismatch) must be rejected
+const driftedPath = join(work, 'spec-drifted.json');
+const driftedSpec = JSON.parse(readFileSync(join(work, 'spec.json'), 'utf8'));
+driftedSpec.title = '磁盘已被同版本改动';
+writeFileSync(driftedPath, JSON.stringify(driftedSpec, null, 2));
+let hashErr = ''; try { execFileSync('node', [join(skill, 'scripts', 'apply-feedback.mjs'), join(work, 'feedback-v1.md'), driftedPath, '--dry-run'], { stdio: 'pipe' }); } catch (err) { hashErr = String(err.stderr); }
+check('same-version baseHash drift is refused by apply-feedback', /哈希/.test(hashErr), hashErr);
+// move child out of newly-added container + delete container, and mixed [new1, movedExisting, new2] in new container
+const edgeSpec = {
+  title: 'Patch 边界测试', version: 1, stage: 'prototype', versionNote: '旧版本备注',
+  pages: [{
+    id: 'ep1', name: '主页面',
+    root: { id: 'ep1-root', type: 'page', children: [
+      { id: 'c-old', type: 'card', label: '旧容器', component: '<Old>', change: 'added', children: [
+        { id: 'n-child', type: 'button', label: '待救按钮', change: 'added' }
+      ] },
+      { id: 'c-keep', type: 'card', label: '保留容器', component: '<Keep>', children: [
+        { id: 'n-exist', type: 'button', label: '已有按钮', change: 'added' }
+      ] }
+    ] },
+    overlays: []
+  }],
+  flows: [], backend: []
+};
+const edgeDir = mkdtempSync(join(tmpdir(), 'smyw-edge-'));
+writeFileSync(join(edgeDir, 'spec.json'), JSON.stringify(edgeSpec, null, 2));
+execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(edgeDir, 'spec.json')], { stdio: 'ignore' });
+await open(join(edgeDir, 'preview.html'));
+await ev('localStorage.clear(); smyw.setMode("edit"); smyw.op.move("ep1", "n-child", { targetId: "c-keep", pos: "inside" }); smyw.op.remove("ep1", "c-old"); smyw.op.add("ep1", "card", { targetId: "ep1-root", pos: "inside" }); return true');
+const edgeFb = await ev('const p = smyw.state.spec.pages[0]; const nc = p.root.children[p.root.children.length - 1]; smyw.op.add("ep1", "button", { targetId: nc.id, pos: "inside" }); smyw.op.move("ep1", "n-exist", { targetId: nc.id, pos: "inside" }); smyw.op.add("ep1", "button", { targetId: nc.id, pos: "inside" }); return { md: smyw.buildMarkdown(false), rev: smyw.exportJSON().revisedSpec, ncId: nc.id, ncKids: nc.children.map(x => x.id) }');
+writeFileSync(join(edgeDir, 'fb.md'), edgeFb.md);
+const edgeApplied = JSON.parse(execFileSync('node', [join(skill, 'scripts', 'apply-feedback.mjs'), join(edgeDir, 'fb.md'), join(edgeDir, 'spec.json'), '--dry-run'], { stdio: ['ignore', 'pipe', 'pipe'] }).toString());
+const edgeNc = edgeApplied.pages[0].root.children.find((x) => x.id === edgeFb.ncId);
+check('smyw-patch@2 handles move-out-of-deleted-container, mixed [new, movedExisting, new] order, and clears versionNote', !edgeApplied.versionNote && !!edgeApplied.pages[0].root.children.find((x) => x.id === 'c-keep').children.find((x) => x.id === 'n-child') && edgeNc && edgeNc.children.map((x) => x.id).join(',') === edgeFb.ncKids.join(','), { got: edgeNc && edgeNc.children.map((x) => x.id), want: edgeFb.ncKids });
+// legacy smyw-patch@1 backward compatibility
+const legMd = '# 反馈\n```json\n' + JSON.stringify({ format: 'smyw-patch@1', base: 1, ops: [{ op: 'set', id: 'n-exist', set: { label: '旧版补丁更新' } }] }) + '\n```\n';
+writeFileSync(join(edgeDir, 'leg.md'), legMd);
+const legApplied = JSON.parse(execFileSync('node', [join(skill, 'scripts', 'apply-feedback.mjs'), join(edgeDir, 'leg.md'), join(edgeDir, 'spec.json'), '--dry-run'], { stdio: ['ignore', 'pipe', 'pipe'] }).toString());
+check('legacy smyw-patch@1 remains backward-compatible', legApplied.pages[0].root.children[1].children[0].label === '旧版补丁更新');
+// build.mjs rejects missing id as error
+writeFileSync(join(edgeDir, 'no-id.json'), JSON.stringify({ title: '缺 id', version: 1, pages: [{ id: 'p', name: '页', root: { type: 'page', children: [] }, overlays: [] }] }));
+let noIdErr = ''; try { execFileSync('node', [join(skill, 'scripts', 'build.mjs'), '--check', join(edgeDir, 'no-id.json')], { stdio: 'pipe' }); } catch (err) { noIdErr = String(err.stderr); }
+check('build.mjs --check rejects missing node id as error', /缺少 id/.test(noIdErr), noIdErr);
 execFileSync('node', [join(skill, 'scripts', 'apply-feedback.mjs'), join(work, 'feedback-v1.md'), join(work, 'spec.json')], { stdio: 'ignore' });
 const v2spec = JSON.parse(readFileSync(join(work, 'spec.json'), 'utf8'));
 check('apply-feedback.mjs turns the pasted Markdown into spec v2', v2spec.version === 2 && v2spec.pages.length === 3 && !JSON.stringify(v2spec).includes('"_um"'));
@@ -196,7 +255,9 @@ const mvV1 = {
         { id: 'toggle-tab2', type: 'button', label: '展开摘要', change: 'unchanged', on: [{ action: 'toggle', target: 'rev-summary' }] }
       ] },
       { id: 'box-a', type: 'card', label: '区域 A', component: '<BoxA>', children: [
-        { id: 'move-me', type: 'button', label: '可移动按钮', change: 'unchanged' }
+        { id: 'keep-first', type: 'button', label: '首个按钮', change: 'unchanged' },
+        { id: 'move-me', type: 'button', label: '可移动按钮', change: 'unchanged' },
+        { id: 'dup-sel', type: 'select', label: '重复选项测试', items: ['A', 'A', 'B'], change: 'unchanged' }
       ] },
       { id: 'box-b', type: 'card', label: '区域 B', component: '<BoxB>', children: [] },
       { id: 'rev-summary', type: 'card', label: '往届摘要面板', hidden: true, change: 'unchanged', children: [
@@ -236,7 +297,9 @@ const mvV2 = {
           { id: 'toggle-tab2', type: 'button', label: '展开摘要', change: 'unchanged', on: [{ action: 'toggle', target: 'rev-summary' }] }
         ] },
         { id: 'box-a', type: 'card', label: '区域 A', component: '<BoxA>', children: [
-          { id: 'move-me-old', type: 'button', label: '可移动按钮', change: 'removed', movedTo: 'move-me' }
+          { id: 'keep-first', type: 'button', label: '首个按钮', change: 'unchanged' },
+          { id: 'move-me-old', type: 'button', label: '可移动按钮', change: 'removed', movedTo: 'move-me' },
+          { id: 'dup-sel', type: 'select', label: '重复选项测试', items: ['A', 'B'], change: 'modified', before: { items: ['A', 'A', 'B'] } }
         ] },
         { id: 'box-b', type: 'card', label: '区域 B', component: '<BoxB>', children: [
           { id: 'move-me', type: 'button', label: '可移动按钮', change: 'added', movedFrom: 'move-me-old' },
@@ -292,14 +355,61 @@ await ev('smyw.setVersions(0, 1); return true'); await sleep(150);
 const mvHist = await ev('smyw.setMode("edit"); const editBtn = [...document.querySelectorAll(".seg button")].find(b => b.textContent === "编辑方案"); smyw.op.comment({ kind: "node", page: "p1", id: "v1-only-btn", side: "after" }, "文案", "建议", "历史版本上的批注"); return { mode: smyw.ui.mode, editDisabled: !!(editBtn && editBtn.disabled), banner: !!document.querySelector(".ver-banner"), v1Added: !!document.querySelector("#cv-world [data-id=v1-only-btn][data-side=after].mk-added"), v2Absent: !document.querySelector("#cv-world [data-id=v2-banner]"), where: smyw.state.comments[0] && smyw.state.comments[0].where }');
 check('v0→v1 historical view is read-only with banner and prefixes comments with [v0→v1]', mvHist.mode === 'view' && mvHist.editDisabled && mvHist.banner && mvHist.v1Added && mvHist.v2Absent && /^\[v0→v1\]/.test(mvHist.where || ''), mvHist);
 await ev('document.querySelector(".ver-back").click(); return true'); await sleep(150);
-const mvBack = await ev('const keptCmt = smyw.state.comments.length === 1; smyw.setMode("edit"); smyw.op.edit("p1", "v2-banner", "label", "v2 更新后提示条"); const updated = document.querySelector("#cv-world [data-id=v2-banner][data-side=after]").textContent.includes("v2 更新后提示条"); smyw.op.restore("p1", "v1-only-btn"); const restoredInV1V2 = !!document.querySelector("#cv-world [data-id=v1-only-btn][data-side=after]:not(.mk)"); smyw.op.restore("p1", "move-me__from"); const patchBase = smyw.specPatch().base; return { left: smyw.ui.leftVer, right: smyw.ui.rightVer, keptCmt, updated, restoredInV1V2, patchBase }');
-check('editing & restoring in v1→v2 live-updates view, restores v1-deleted nodes & move ghosts, and keeps comments/patch base v2', mvBack.left === 1 && mvBack.right === 2 && mvBack.keptCmt && mvBack.updated && mvBack.restoredInV1V2 && mvBack.patchBase === 2, mvBack);
+const mvDup = await ev('const p1 = smyw.viewSpec.pages[0]; const find = (n, id) => n.id === id ? n : (n.children || []).map(c => find(c, id)).find(Boolean); const sel = find(p1.root, "dup-sel"); return sel && sel.items');
+check('LCS diffItemList marks duplicate removed item ["A","A","B"] → ["A","B"]', Array.isArray(mvDup) && mvDup.filter((x) => x && x.change === 'removed' && x.label === 'A').length === 1, mvDup);
+const mvGhostCmt = await ev('smyw.op.comment({ kind: "node", page: "p1", id: "move-me__from", side: "before" }, "位置/布局", "建议", "原位置批注"); const last = smyw.state.comments[smyw.state.comments.length - 1]; return { tid: last.target.id, ghost: !!last.target.ghost, where: last.where }');
+check('commenting on a __from virtual ghost stores real node id (no __from leaked)', mvGhostCmt.tid === 'move-me' && mvGhostCmt.ghost && !mvGhostCmt.where.includes('__from') && mvGhostCmt.where.includes('#move-me'), mvGhostCmt);
+const mvBack = await ev('const keptCmt = smyw.state.comments.length === 2; smyw.setMode("edit"); smyw.op.edit("p1", "v2-banner", "label", "v2 更新后提示条"); const updated = document.querySelector("#cv-world [data-id=v2-banner][data-side=after]").textContent.includes("v2 更新后提示条"); smyw.op.restore("p1", "v1-only-btn"); const restoredInV1V2 = !!document.querySelector("#cv-world [data-id=v1-only-btn][data-side=after]:not(.mk)"); smyw.op.restore("p1", "move-me__from"); const find = (n, id) => n.id === id ? n : (n.children || []).map(c => find(c, id)).find(Boolean); const boxA = find(smyw.state.spec.pages[0].root, "box-a"); const boxB = find(smyw.state.spec.pages[0].root, "box-b"); const mvNode = boxA.children.find(x => x.id === "move-me"); const mvIdx = boxA.children.indexOf(mvNode); const oldGhostGone = !boxA.children.some(x => x.id === "move-me-old"); const goneFromB = !boxB.children.some(x => x.id === "move-me"); const patch = smyw.specPatch(); return { left: smyw.ui.leftVer, right: smyw.ui.rightVer, keptCmt, updated, restoredInV1V2, patchBase: patch.base, mvKeptId: !!mvNode, mvChange: mvNode && mvNode.change, mvIdx, oldGhostGone, goneFromB, md: smyw.buildMarkdown(false), rev: smyw.exportJSON().revisedSpec }');
+writeFileSync(join(mvDir, 'mv-fb.md'), mvBack.md);
+const mvDry = JSON.parse(execFileSync('node', [join(skill, 'scripts', 'apply-feedback.mjs'), join(mvDir, 'mv-fb.md'), join(mvDir, 'spec.json'), '--dry-run'], { stdio: ['ignore', 'pipe', 'pipe'] }).toString());
+check('editing & restoring in v1→v2 preserves realId & sibling position, clears v0 ghost, and round-trips through apply-feedback', mvBack.left === 1 && mvBack.right === 2 && mvBack.keptCmt && mvBack.updated && mvBack.restoredInV1V2 && mvBack.patchBase === 2 && mvBack.mvKeptId && mvBack.mvChange === 'unchanged' && mvBack.mvIdx === 1 && mvBack.oldGhostGone && mvBack.goneFromB && JSON.stringify(canon(mvDry)) === JSON.stringify(canon(mvBack.rev)), { mvBack: { ...mvBack, md: undefined, rev: undefined } });
 await ev('smyw.setTab("feedback"); return true'); await sleep(100);
 await ev('document.querySelector(".cmt .where").click(); return true'); await sleep(200);
 check('jumping to a historical comment from feedback locates it on the canvas', await ev('return smyw.ui.tab === "canvas" && smyw.ui.sel && smyw.ui.sel.id === "v1-only-btn"'));
+// M3: restoring a v1-only deleted page whose child id collides with a v2 node on another page deduplicates ids & remaps triggers
+const colDir = mkdtempSync(join(tmpdir(), 'smyw-col-'));
+writeFileSync(join(colDir, 'spec.json'), JSON.stringify({
+  title: '跨版本恢复去重测试', version: 1, stage: 'prototype',
+  pages: [
+    { id: 'keep-p', name: '保留页', root: { id: 'kp-root', type: 'page', children: [] }, overlays: [] },
+    { id: 'del-p', name: '旧页', root: { id: 'dp-root', type: 'page', children: [{ id: 'shared-btn', type: 'button', label: '旧按钮' }] }, overlays: [{ id: 'dp-dlg', type: 'dialog', label: '旧弹窗', trigger: 'shared-btn', children: [] }] }
+  ],
+  flows: [], backend: []
+}, null, 2));
+execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(colDir, 'spec.json')], { stdio: 'ignore' });
+writeFileSync(join(colDir, 'spec.json'), JSON.stringify({
+  title: '跨版本恢复去重测试', version: 2, stage: 'prototype',
+  pages: [
+    { id: 'keep-p', name: '保留页', root: { id: 'kp-root', type: 'page', children: [{ id: 'shared-btn', type: 'button', label: 'v2 同名按钮', change: 'added' }] }, overlays: [] }
+  ],
+  flows: [], backend: []
+}, null, 2));
+execFileSync('node', [join(skill, 'scripts', 'build.mjs'), join(colDir, 'spec.json')], { stdio: 'ignore' });
+await open(join(colDir, 'preview.html'));
+await ev('localStorage.clear(); smyw.setMode("edit"); smyw.op.restorePage("del-p"); return true');
+const colRes = await ev('const rp = smyw.state.spec.pages.find(p => p.id === "del-p"); const kp = smyw.state.spec.pages.find(p => p.id === "keep-p"); const rBtn = rp && rp.root.children[0]; const rDlg = rp && rp.overlays[0]; return { kpHasBtn: !!(kp && kp.root.children.some(x => x.id === "shared-btn")), renamed: !!(rBtn && rBtn.id !== "shared-btn"), trigRemapped: !!(rDlg && rBtn && rDlg.trigger === rBtn.id), md: smyw.buildMarkdown(false), rev: smyw.exportJSON().revisedSpec }');
+writeFileSync(join(colDir, 'fb.md'), colRes.md);
+const colDry = JSON.parse(execFileSync('node', [join(skill, 'scripts', 'apply-feedback.mjs'), join(colDir, 'fb.md'), join(colDir, 'spec.json'), '--dry-run'], { stdio: ['ignore', 'pipe', 'pipe'] }).toString());
+writeFileSync(join(colDir, 'spec-next.json'), JSON.stringify(colDry, null, 2));
+execFileSync('node', [join(skill, 'scripts', 'build.mjs'), '--check', join(colDir, 'spec-next.json')], { stdio: 'ignore' });
+check('opRestorePage deduplicates colliding child ids, remaps triggers, passes build --check & round-trips apply-feedback', colRes.kpHasBtn && colRes.renamed && colRes.trigRemapped && JSON.stringify(canon(colDry)) === JSON.stringify(canon(colRes.rev)), { colRes: { ...colRes, md: undefined, rev: undefined } });
+// unchanged page renders its panels in .cv-panels-area below frame (no legacy .cv-ovcol)
+const singleDir = mkdtempSync(join(tmpdir(), 'smyw-single-'));
+writeFileSync(join(singleDir, 'spec.json'), JSON.stringify({
+  title: '单帧无改动页测试', version: 1, stage: 'prototype',
+  pages: [{
+    id: 'sp1', name: '静态页',
+    root: { id: 'sp1-root', type: 'page', children: [{ id: 'sp1-btn', type: 'button', label: '打开', component: '<Btn>' }] },
+    overlays: [{ id: 'sp1-dlg', type: 'dialog', label: '静态弹窗', trigger: 'sp1-btn', children: [{ id: 'sp1-txt', type: 'text', label: '说明' }] }]
+  }],
+  flows: [], backend: []
+}, null, 2));
+execFileSync('node', [join(skill, 'scripts', 'build.mjs'), '--no-archive', join(singleDir, 'spec.json')], { stdio: 'ignore' });
+await open(join(singleDir, 'preview.html'));
+check('unchanged page unifies interactive panels in .cv-panels-area below frame without .cv-ovcol', await ev('return !!document.querySelector(".cv-group.is-single[data-page=sp1] > .cv-panels-area .cv-ov[data-ov=sp1-dlg]") && !document.querySelector(".cv-ovcol")'));
 
 console.log('helpdesk-ai example (one real screen, multi-trigger connectors)');
-await open(join(skill, 'examples', 'helpdesk-ai', 'preview.html'));
+await open(helpdeskHtml);
 await ev('localStorage.clear(); return true');
 const ds = await ev('return { units: smyw.units.map(u => u.id), groups: document.querySelectorAll(".cv-group").length, frames: document.querySelectorAll(".cv-frame").length, cols: ["queue", "detail", "customer"].every(id => !!document.querySelector("#cv-world .cv-frame.cv-after [data-id=" + id + "]")) }');
 check('queue, detail and customer panel are drawn as one screen (split into before/after) with 8 changes', ds.groups === 1 && ds.frames === 2 && ds.units.length === 8 && ds.cols, ds);
@@ -342,7 +452,7 @@ check('form detail shows both Form and Field imports', fbi.some((t) => t.include
 await shot('07-helpdesk-unit');
 
 console.log('base-ui example (Base UI primitives)');
-await open(join(skill, 'examples', 'base-ui', 'preview.html'));
+await open(baseUiHtml);
 await ev('localStorage.clear(); return true');
 const bu = await ev('return { buiScript: !!document.getElementById("smyw-bui"), dialogs: document.querySelectorAll("#cv-world [data-bui=dialog]").length, switchNode: !!document.querySelector("#cv-world [data-bui=switch]"), toast: !!document.querySelector("#cv-world [data-bui=toast]"), tabLabels: [...document.querySelectorAll("#cv-world [data-id=team-tabs-list] .wf-lbl")].map(x => x.textContent), inlineTabs: !document.querySelector("#cv-world .cv-rev[data-ov=roles]") && !!document.querySelector("#cv-world [data-id=members]") && !document.querySelector("#cv-world [data-id=roles]") }');
 check('base-ui example renders Dialog / Switch / Toast primitives and keeps Tabs panels in-place', bu.buiScript && bu.dialogs === 1 && bu.switchNode && bu.toast && bu.tabLabels.includes('成员') && bu.inlineTabs, bu);

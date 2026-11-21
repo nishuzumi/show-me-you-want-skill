@@ -48,7 +48,7 @@ whenToUse: 用户提出新功能、改版或重构，且会新增/删除/修改�
 - 用户的结构修改以补丁形式回来（见第 6、7 步），由脚本应用，不需要你读全量方案。
 
 **组件框架：Base UI。** 界面用 Base UI 的原语来拼，不要用抽象方框代替真实组件：
-- `type` 写 Base UI 组件名：`dialog` / `alert-dialog` / `drawer` / `popover` / `preview-card` / `tooltip` / `menu` / `context-menu` / `toast` / `switch` / `checkbox` / `checkbox-group` / `radio-group` / `select` / `combobox` / `autocomplete` / `input` / `field` / `fieldset` / `form` / `number-field` / `otp-field` / `slider` / `progress` / `meter` / `tabs` / `accordion` / `collapsible` / `toolbar` / `menubar` / `navigation-menu` / `toggle` / `toggle-group` / `avatar` / `separator` / `button`。旧类型 `modal` / `radio` / `divider` 也还能用，但新方案优先用对应的 Base UI 类型；`toggle` 不是开关的旧名，它是 Base UI 的 Toggle 按钮（开/关设置请用 `switch`）。
+- `type` 写 Base UI 组件名：`dialog` / `alert-dialog` / `drawer` / `popover` / `preview-card` / `tooltip` / `menu` / `context-menu` / `toast` / `switch` / `checkbox` / `checkbox-group` / `radio-group` / `select` / `combobox` / `autocomplete` / `input` / `field` / `fieldset` / `form` / `number-field` / `otp-field` / `slider` / `progress` / `meter` / `tabs` / `accordion` / `collapsible` / `toolbar` / `menubar` / `navigation-menu` / `scroll-area` / `toggle` / `toggle-group` / `avatar` / `separator` / `button`。旧类型 `modal` / `radio` / `divider` 也还能用，但新方案优先用对应的 Base UI 类型；`toggle` 不是开关的旧名，它是 Base UI 的 Toggle 按钮（开/关设置请用 `switch`）。
 - 弹层用 `trigger` 指向打开它的按钮；展开 / 收起用 `hidden` + `on: toggle`，Tabs 切换用 `hidden` + `on: show/hide`；选中态用 `states` + `on: state`。预览的「▶ 演示」能真的点。具体切分见 `references/base-ui.md`。
 - `component` 写实现时要写的 Base UI 组件（如 `"<Dialog> InviteDialog.tsx"`），用户靠它把线框和代码对上。
 - **不要写样式**：Base UI 是 headless 的，颜色/间距/字体由项目决定；线框也不表达视觉。
@@ -57,7 +57,9 @@ whenToUse: 用户提出新功能、改版或重构，且会新增/删除/修改�
 - **一棵合并树**：同一棵树同时描述前后两侧。每个节点用 `change` 标注 `added / removed / modified`，不写就是不变。
 - **在最外层标注**：整块模块是新增或删除时，只在这个模块上写 `change`，里面的子元素**不要**再逐个标。预览只给最外层改动的模块画框编号（黄 = 修改，绿 = 新增，红 = 删除），用户点编号再看这一处的改动前后。
 - **修改**：`change: "modified"`，旧值写在 `before` 里（如 `"before": {"label": "添加"}`），旧值不存在就写 `null`。容器改了名、里面又加了几块时，容器标 modified，新加的子块各自标 added。
-- **移动**：旧位置放一个 `change: "removed", movedTo: "<新id>"` 的节点，新位置放 `change: "added", movedFrom: "<旧id>"` 的节点。
+- **移动**：
+  - **单版本内相对 `v0` 移动**：旧位置放一个 `change: "removed", movedTo: "<新id>"` 的节点，新位置放 `change: "added", movedFrom: "<旧id>"` 的节点（用不同 `id`）。
+  - **跨版本迭代（如 `v1 → v2`）搬家**：直接保留该节点在 `v1` 里的原 `id` 放到新容器即可（若它同时相对 `v0` 也移动了，旧位置放一个新 id 的 `removed` 幽灵指向原 `id`），多版本 diff 会自动按同 `id` 换父容器识别为跨容器移动。
 - **弹窗、抽屉、下拉菜单（二级菜单）、气泡**：放在 `page.overlays`，`trigger` 指向打开它的按钮 id；几个按钮打开同一个弹层时写成 id 数组。画布上会从每个触发按钮画一条弯曲连线到弹层，所以 trigger 一定要写全。
 - **交互要写成数据，不要写成说明文字**。「点了才出现」「点不开」「可折叠」「点击切换」这类话，改用下面三个字段（build 会对这类文字报警）：
   - `on`：点击后发生什么，如 `[{ "action": "open", "target": "settings" }]`。action 取 open（打开弹层）/ close（关闭所在弹层）/ navigate（跳到另一个 page）/ toggle（展开收起）/ show / hide / state（切换状态）/ back。
@@ -70,7 +72,7 @@ whenToUse: 用户提出新功能、改版或重构，且会新增/删除/修改�
 - **自动继承项目主题（0 额外 token）**：`build.mjs` 会自动从目标项目的 `src/app/globals.css` / `src/index.css` 等文件提取 `:root` CSS 变量（主色、背景、卡片、边框、圆角）应用到原型上；需要自定义时也可以在 spec 顶层写可选的 `"theme": { "primary": "#4F46E5", "radius": "6px" }`。
 - `note` 用一句话写「为什么这么改」，会出现在悬浮注释气泡、改动清单和详情里。
 - `versionNote`（顶层可选字符串）：多轮迭代时用一句话写「这一版相对上一版改了什么」（如 `"收敛为 3 格概览，去掉页头冗余按钮"`），会直接显示在预览顶部的版本对比下拉框里。
-- `id` 要稳定、有语义（kebab-case），并在整个 spec 内唯一，因为反馈和多版本 diff 都会按 id 对齐元素。**跨版本迭代修改同一个模块/按钮/步骤时，务必保留原 `id`**（不要改名或重新编号），这样才能在任意两个版本间精确展示修改与跨容器移动。
+- `id` 要稳定、有语义（kebab-case），并在整个 spec 内唯一且必填（`build.mjs` 对缺 id 直接报错），因为补丁和多版本 diff 都按 id 对齐元素。**跨版本迭代修改或搬家同一个模块/按钮/步骤时，务必保留原 `id`**（不要改名或重新编号），这样才能在任意两个版本间精确展示修改与跨容器移动。
 - `questions`：需要用户拍板的点写在这里（可带 `options`），不要藏在 summary 里。
 - `flows`：按用户实际操作顺序写步骤，`actor` 取 user / frontend / backend / db / external / system，`fn` 写函数或接口，`node` 写这一步发生在哪个界面元素上（id，可以是数组）。详情面板靠它显示「相关交互」，流程页也能一键定位回界面。
 - `backend`：模块 → 条目（api / function / model / field / table / job / event / config）。

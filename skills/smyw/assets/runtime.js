@@ -58,7 +58,6 @@ const ACTORS = { user: '用户', frontend: '前端', backend: '后端', db: '数
 const MOD_KINDS = { module: '模块', service: '服务', controller: '控制器', api: '接口组', model: '数据模型', table: '数据表', store: '前端状态', component: '前端组件', job: '定时任务', config: '配置', other: '其他' };
 const BE_KINDS = { api: 'API', function: '函数', method: '方法', model: '模型', field: '字段', table: '表', column: '列', job: '任务', event: '事件', config: '配置', state: '状态', other: '其他' };
 const STAGES = { prototype: '原型阶段 · 尚未实现', implementing: '实现中', done: '已实现 · 回顾' };
-const AREAS = { frontend: '前端', backend: '后端', data: '数据', api: '接口', flow: '流程', other: '其他' };
 const CATS = ['位置/布局', '交互方式', '组件类型', '样式/风格', '文案', '功能缺失', '功能多余', '数据/字段', '流程/逻辑', '接口/后端', '其他'];
 const SEVS = ['必须改', '建议', '疑问'];
 const STYLE_TAGS = ['整体风格不符', '和现有页面不统一', '配色', '信息密度过高', '信息密度过低', '层级/导航不清', '交互方式不对', '文案语气', '移动端适配'];
@@ -108,6 +107,7 @@ function btn(label, onclick, cls, title) { return h('button', { class: cls || nu
 // ------------------------------------------------------------------ state
 const RAW = document.getElementById('smyw-spec').textContent;
 const BASE = JSON.parse(RAW);
+const BASE_HASH = hash(JSON.stringify(BASE));
 const VERSIONS = (() => {
   try {
     const el = document.getElementById('smyw-versions');
@@ -122,7 +122,8 @@ const HAS_MULTI_VER = VERSIONS.length > 2;
 function verByNum(n) { return VERSIONS.find((v) => Number(v.version) === Number(n)) || null; }
 function versionSnap(ver) { const v = verByNum(ver); return v ? v.spec : null; }
 
-const KEY = 'smyw:' + hash(RAW);
+const KEY = 'smyw:' + BASE_HASH;
+const BASE_IDS = collectSpecIds(normalize(clone(BASE)));
 let S = loadState() || freshState();
 let CUR = S.spec;
 let undoStack = [];
@@ -130,7 +131,7 @@ let redoStack = [];
 const uiSaved = readJSON(KEY + ':ui') || {};
 const initLeft = HAS_MULTI_VER && uiSaved.leftVer != null && verByNum(uiSaved.leftVer) ? Number(uiSaved.leftVer) : (HAS_MULTI_VER ? PREV_VER : 0);
 const initRight = HAS_MULTI_VER && uiSaved.rightVer != null && verByNum(uiSaved.rightVer) ? Number(uiSaved.rightVer) : LATEST_VER;
-const ui = { tab: ['canvas', 'flows', 'backend', 'feedback'].indexOf(uiSaved.tab) >= 0 ? uiSaved.tab : 'canvas', page: uiSaved.page, leftVer: initLeft, rightVer: initRight, diffView: ['split', 'wipe'].indexOf(uiSaved.diffView) >= 0 ? uiSaved.diffView : 'split', diffMode: uiSaved.diffMode === true, showPins: uiSaved.showPins !== false, wipePos: {}, preview: { vis: {}, st: {}, checks: {}, selects: {} }, mode: 'view', sel: null, unit: null, cam: null, showLinks: false, play: null, showFn: false, showComp: false, fade: false, space: false, panMoved: false, overlayOpen: null, includeSpec: false, confirmReset: false, toast: null };
+const ui = { tab: ['canvas', 'flows', 'backend', 'feedback'].indexOf(uiSaved.tab) >= 0 ? uiSaved.tab : 'canvas', page: uiSaved.page, leftVer: initLeft, rightVer: initRight, diffView: ['split', 'wipe'].indexOf(uiSaved.diffView) >= 0 ? uiSaved.diffView : 'split', diffMode: uiSaved.diffMode === true, showPins: uiSaved.showPins !== false, listOpen: false, wipePos: {}, preview: { vis: {}, st: {}, checks: {}, selects: {} }, mode: 'view', sel: null, unit: null, cam: null, showLinks: false, play: null, showFn: false, showComp: false, space: false, panMoved: false, includeSpec: false, confirmReset: false, toast: null };
 syncViewSpec();
 if (!pageById(ui.page)) { const first = CUR.pages.find((p) => pageStatus(p) !== 'unchanged') || CUR.pages[0]; ui.page = first ? first.id : null; }
 let drag = null;
@@ -138,6 +139,13 @@ let dropEl = null;
 let toastTimer = 0;
 let hoverKey = null;
 
+function collectSpecIds(sp) {
+  const s = new Set();
+  (sp.pages || []).forEach((p) => { s.add(p.id); entries(p).forEach((e) => s.add(e.n.id)); });
+  (sp.flows || []).forEach((f) => { s.add(f.id); (f.steps || []).forEach((x) => s.add(x.id)); });
+  (sp.backend || []).forEach((m) => { s.add(m.id); (m.items || []).forEach((x) => s.add(x.id)); });
+  return s;
+}
 function freshState() { return { spec: normalize(clone(BASE)), ops: [], comments: [], global: { tags: [], text: '', ref: '' }, answers: {}, approved: false, seq: 0 }; }
 function loadState() { const s = readJSON(KEY); return s && s.spec && Array.isArray(s.ops) && Array.isArray(s.comments) ? s : null; }
 function save() { writeJSON(KEY, S); writeJSON(KEY + ':ui', { tab: ui.tab, page: ui.page, leftVer: ui.leftVer, rightVer: ui.rightVer, diffView: ui.diffView, diffMode: ui.diffMode, showPins: ui.showPins }); }
@@ -162,46 +170,32 @@ function sideLabel(side) {
   return side === 'before' ? verShort(ui.leftVer) : verShort(ui.rightVer);
 }
 
-function extractItemArr(arr, side) {
+function extractAfterItems(arr) {
   if (!Array.isArray(arr)) return undefined;
   const out = [];
   arr.forEach((x) => {
     if (x && typeof x === 'object') {
-      if (side === 'before' && x.change === 'added') return;
-      if (side === 'after' && x.change === 'removed') return;
-      const lbl = side === 'before' && x.before != null ? (typeof x.before === 'object' ? x.before.label : x.before) : x.label;
-      if (lbl != null) out.push(String(lbl));
+      if (x.change === 'removed') return;
+      if (x.label != null) out.push(String(x.label));
     } else if (x != null) out.push(String(x));
   });
   return out;
 }
-function extractObj(o, side, childKeys) {
-  if (!o || typeof o !== 'object') return null;
-  if (side === 'before' && o.change === 'added') return null;
-  if (side === 'after' && o.change === 'removed') return null;
+function extractAfterObj(o, childKeys) {
+  if (!o || typeof o !== 'object' || o.change === 'removed') return null;
   const out = {};
   const skip = new Set(['change', 'before', 'movedFrom', 'movedTo', '_um'].concat(childKeys));
   Object.keys(o).forEach((k) => {
     if (skip.has(k)) return;
-    if (side === 'before' && k === 'note') return;
-    if (k === 'items' && childKeys.indexOf('items') < 0) { out.items = extractItemArr(o.items, side); return; }
-    if (k === 'columns') { out.columns = extractItemArr(o.columns, side); return; }
+    if (k === 'items' && childKeys.indexOf('items') < 0) { out.items = extractAfterItems(o.items); return; }
+    if (k === 'columns') { out.columns = extractAfterItems(o.columns); return; }
     out[k] = clone(o[k]);
   });
-  if (side === 'before' && o.before && typeof o.before === 'object') {
-    Object.keys(o.before).forEach((k) => {
-      const bv = o.before[k];
-      if (isEmpty(bv)) delete out[k];
-      else if (k === 'items' && childKeys.indexOf('items') < 0) out.items = extractItemArr(bv, side);
-      else if (k === 'columns') out.columns = extractItemArr(bv, side);
-      else out[k] = clone(bv);
-    });
-  }
   childKeys.forEach((ck) => {
-    if (ck === 'root') out.root = o.root ? extractObj(o.root, side, ['children']) : { type: 'page', children: [] };
+    if (ck === 'root') out.root = o.root ? extractAfterObj(o.root, ['children']) : { type: 'page', children: [] };
     else if (Array.isArray(o[ck])) {
       const subKeys = ck === 'children' || ck === 'overlays' ? ['children'] : [];
-      const kids = o[ck].map((c) => extractObj(c, side, subKeys)).filter(Boolean);
+      const kids = o[ck].map((c) => extractAfterObj(c, subKeys)).filter(Boolean);
       if (kids.length || ck !== 'children') out[ck] = kids;
     }
   });
@@ -211,34 +205,31 @@ function extractAfter(sp) {
   return {
     title: sp.title || '未命名变更', version: Number(sp.version) || 1, stage: sp.stage || 'prototype',
     summary: sp.summary, versionNote: sp.versionNote, changes: clone(sp.changes || []), questions: clone(sp.questions || []),
-    pages: (sp.pages || []).map((p) => extractObj(p, 'after', ['root', 'overlays'])).filter(Boolean),
-    flows: (sp.flows || []).map((f) => extractObj(f, 'after', ['steps'])).filter(Boolean),
-    backend: (sp.backend || []).map((m) => extractObj(m, 'after', ['items'])).filter(Boolean)
+    pages: (sp.pages || []).map((p) => extractAfterObj(p, ['root', 'overlays'])).filter(Boolean),
+    flows: (sp.flows || []).map((f) => extractAfterObj(f, ['steps'])).filter(Boolean),
+    backend: (sp.backend || []).map((m) => extractAfterObj(m, ['items'])).filter(Boolean)
   };
 }
 
 function diffItemList(lRaw, rRaw) {
   const L = (lRaw || []).map(itemText), R = (rRaw || []).map(itemText);
   if (same(L, R)) return null;
-  const lSet = new Set(L), rSet = new Set(R);
-  const out = [];
-  let li = 0;
-  R.forEach((rx) => {
-    if (lSet.has(rx)) {
-      while (li < L.length && L[li] !== rx) {
-        if (!rSet.has(L[li])) out.push({ label: L[li], change: 'removed' });
-        li++;
-      }
-      if (li < L.length && L[li] === rx) li++;
-      out.push(rx);
-    } else {
-      out.push({ label: rx, change: 'added' });
+  const m = L.length, n = R.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = m - 1; i >= 0; i--) {
+    for (let j = n - 1; j >= 0; j--) {
+      dp[i][j] = L[i] === R[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
     }
-  });
-  while (li < L.length) {
-    if (!rSet.has(L[li])) out.push({ label: L[li], change: 'removed' });
-    li++;
   }
+  const out = [];
+  let i = 0, j = 0;
+  while (i < m && j < n) {
+    if (L[i] === R[j]) { out.push(R[j]); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ label: L[i], change: 'removed' }); i++; }
+    else { out.push({ label: R[j], change: 'added' }); j++; }
+  }
+  while (i < m) { out.push({ label: L[i], change: 'removed' }); i++; }
+  while (j < n) { out.push({ label: R[j], change: 'added' }); j++; }
   return out;
 }
 function mergeLists(lArr, rArr, onSame, onAdded, onRemoved) {
@@ -398,7 +389,7 @@ function setVersions(l, r) {
   const ln = Number(l), rn = Number(r);
   if (!verByNum(ln) || !verByNum(rn)) return;
   ui.leftVer = ln; ui.rightVer = rn;
-  ui.sel = null; ui.unit = null; ui.cam = null; hoverKey = null; ui.overlayOpen = null;
+  ui.sel = null; ui.unit = null; ui.cam = null; hoverKey = null;
   if (isHistoryView() && ui.mode === 'edit') ui.mode = 'view';
   syncViewSpec();
   validateSel();
@@ -448,8 +439,14 @@ function pageStatus(p) { return p.change !== 'unchanged' ? p.change : (nodeChang
 function flowStatus(f) { return f.change !== 'unchanged' ? f.change : (f.steps.some((s) => s.change !== 'unchanged') ? 'modified' : 'unchanged'); }
 function modStatus(m) { return m.change !== 'unchanged' ? m.change : (m.items.some((s) => s.change !== 'unchanged') ? 'modified' : 'unchanged'); }
 
-function allIds() { const s = new Set(); S.spec.pages.forEach((p) => { s.add(p.id); entries(p).forEach((e) => s.add(e.n.id)); }); S.spec.flows.forEach((f) => { s.add(f.id); f.steps.forEach((x) => s.add(x.id)); }); S.spec.backend.forEach((m) => { s.add(m.id); m.items.forEach((x) => s.add(x.id)); }); return s; }
-function newId() { const ids = allIds(); let id; do { S.seq = (S.seq || 0) + 1; id = 'u' + S.seq; } while (ids.has(id)); return id; }
+function allIds() { return collectSpecIds(S.spec); }
+function newId(extraTaken) {
+  const ids = allIds();
+  let id;
+  do { S.seq = (S.seq || 0) + 1; id = 'u' + S.seq; } while (ids.has(id) || BASE_IDS.has(id) || (extraTaken && extraTaken.has(id)));
+  if (extraTaken) extraTaken.add(id);
+  return id;
+}
 
 /* Record a field edit while keeping the merged-tree semantics: the first edit of an existing
  * element remembers the old value in before{} and marks it modified; editing back reverts. */
@@ -660,39 +657,127 @@ function opDelete(pid, id) {
     if (e.n.movedFrom) { const g = findNode(p, e.n.movedFrom); if (g) delete g.n.movedTo; }
   } else { e.n.change = 'removed'; delete e.n._um; }
   clearTriggers(p, ids);
-  if (ui.overlayOpen && ids.has(ui.overlayOpen)) ui.overlayOpen = null;
   ui.sel = null;
   return { type: 'delete', page: pid, node: id, desc: pfx(p) + '删除' + name };
 }
-function restoreFromSnap(srcNode) {
-  const taken = allIds();
-  const c = clone(srcNode);
+function restoreFromSnap(srcObj, childKeys) {
+  childKeys = childKeys || ['children'];
+  const taken = new Set([...allIds(), ...BASE_IDS]);
+  const c = clone(srcObj);
+  const idMap = {};
   const walk = (x, isTop) => {
     if (!x || typeof x !== 'object') return;
-    if (!x.id || taken.has(String(x.id))) x.id = newId();
-    taken.add(String(x.id));
+    const orig = x.id != null ? String(x.id) : '';
+    if (!orig || taken.has(orig)) {
+      const nid = newId(taken);
+      if (orig) idMap[orig] = nid;
+      x.id = nid;
+    } else {
+      x.id = orig;
+      taken.add(orig);
+    }
     x.change = isTop ? 'added' : 'unchanged';
     delete x.before; delete x.movedFrom; delete x.movedTo; delete x._um;
-    (x.children || []).forEach((ch) => walk(ch, false));
+    childKeys.forEach((ck) => {
+      if (ck === 'root' && x.root) walk(x.root, false);
+      else if (Array.isArray(x[ck])) x[ck].forEach((ch) => walk(ch, false));
+    });
   };
   walk(c, true);
+  if (Object.keys(idMap).length) {
+    const remap = (x) => {
+      if (!x || typeof x !== 'object') return;
+      if (x.trigger != null) {
+        const l = trigList(x);
+        if (l.some((t) => idMap[t])) x.trigger = trigValue(l.map((t) => idMap[t] || t));
+      }
+      if (Array.isArray(x.on)) {
+        x.on.forEach((ia) => { if (ia && ia.target && idMap[String(ia.target)]) ia.target = idMap[String(ia.target)]; });
+      }
+      childKeys.forEach((ck) => {
+        if (ck === 'root' && x.root) remap(x.root);
+        else if (Array.isArray(x[ck])) x[ck].forEach(remap);
+      });
+    };
+    remap(c);
+  }
   return c;
+}
+function insertNearOldSib(targetList, oldList, oldItem, item, visIds) {
+  const oldIdx = Array.isArray(oldList) ? oldList.indexOf(oldItem) : -1;
+  if (oldIdx >= 0) {
+    for (let i = oldIdx - 1; i >= 0; i--) {
+      const pid = oldList[i] && oldList[i].id != null ? String(oldList[i].id) : null;
+      if (!pid || (visIds && !visIds.has(pid))) continue;
+      const k = targetList.findIndex((x) => x.id === pid);
+      if (k >= 0) { targetList.splice(k + 1, 0, item); return; }
+    }
+    for (let i = oldIdx + 1; i < oldList.length; i++) {
+      const nid = oldList[i] && oldList[i].id != null ? String(oldList[i].id) : null;
+      if (!nid || (visIds && !visIds.has(nid))) continue;
+      const k = targetList.findIndex((x) => x.id === nid);
+      if (k >= 0) { targetList.splice(k, 0, item); return; }
+    }
+  }
+  targetList.splice(oldIdx >= 0 ? Math.min(oldIdx, targetList.length) : targetList.length, 0, item);
+}
+function diffAgainstV0Ghost(ghostV0, nodeAfter) {
+  const skip = new Set(['id', 'children', 'change', 'before', 'movedFrom', 'movedTo', '_um', 'note']);
+  const before = {};
+  const keys = new Set(Object.keys(ghostV0).concat(Object.keys(nodeAfter)));
+  keys.forEach((k) => {
+    if (skip.has(k)) return;
+    const lv = isEmpty(ghostV0[k]) ? null : ghostV0[k];
+    const rv = isEmpty(nodeAfter[k]) ? null : nodeAfter[k];
+    if (!same(lv, rv)) before[k] = clone(lv);
+  });
+  return Object.keys(before).length ? before : null;
 }
 function opRestore(pid, id) {
   const p = ePageById(pid); if (!p) return false;
-  // Virtual move ghost (id + '__from') from multi-version diff: move the real node back to its leftVer container.
+  const vis = afterVisibleIds(p);
+  // Virtual move ghost (id + '__from') from multi-version diff: put the node back into its leftVer container.
   if (String(id).endsWith('__from')) {
     const realId = String(id).slice(0, -6);
     const cur = findNode(p, realId);
     const L = versionSnap(ui.leftVer);
     const lp = L && (L.pages || []).find((x) => x.id === pid);
     const old = lp && findNode(lp, realId);
-    if (!cur || !old) return false;
-    if (cur.n.movedFrom) {
-      const g = findNode(p, cur.n.movedFrom);
-      if (g && g.n.change === 'removed') return opRestore(pid, g.n.id);
+    if (!cur || !cur.list || !old) return false;
+    const isOv = old.list === lp.overlays;
+    const oldParE = !isOv && old.par ? findNode(p, old.par.id) : null;
+    const useOldPar = !isOv && oldParE && vis.has(oldParE.n.id) && !contains(cur.n, oldParE.n);
+    const targetList = isOv ? p.overlays : (useOldPar ? (oldParE.n.children || (oldParE.n.children = [])) : (p.root.children || (p.root.children = [])));
+    // Only move the node in-place (keeping realId) when it was added/moved since v0; otherwise use opMove so v0 baseline stays truthful.
+    if (cur.n.change === 'added') {
+      const name = ref(cur.n);
+      cur.list.splice(cur.list.indexOf(cur.n), 1);
+      const ghost = cur.n.movedFrom ? findNode(p, cur.n.movedFrom) : null;
+      if (ghost && ghost.n.change === 'removed' && ghost.list === targetList) {
+        ghost.list.splice(ghost.list.indexOf(ghost.n), 1);
+        delete cur.n.movedFrom;
+        const b = diffAgainstV0Ghost(ghost.n, cur.n);
+        if (b) { cur.n.before = b; cur.n.change = 'modified'; }
+        else { delete cur.n.before; cur.n.change = 'unchanged'; }
+      }
+      insertNearOldSib(targetList, old.list, old.n, cur.n, vis);
+      selectNode(pid, cur.n.id);
+      return { type: 'restore', page: pid, node: cur.n.id, desc: pfx(p) + '撤销移动：把' + name + '放回 v' + ui.leftVer + ' 的原位置' };
     }
-    const dest = old.list === lp.overlays ? { overlays: true } : (old.par && findNode(p, old.par.id) ? { targetId: old.par.id, pos: 'inside' } : { targetId: p.root.id, pos: 'inside' });
+    const oldIdx = Array.isArray(old.list) ? old.list.indexOf(old.n) : -1;
+    let dest = isOv ? { overlays: true } : { targetId: useOldPar ? oldParE.n.id : p.root.id, pos: 'inside' };
+    if (!isOv && oldIdx >= 0) {
+      for (let i = oldIdx - 1; i >= 0; i--) {
+        const sid = old.list[i] && old.list[i].id != null ? String(old.list[i].id) : null;
+        if (sid && vis.has(sid) && targetList.some((x) => x.id === sid)) { dest = { targetId: sid, pos: 'after' }; break; }
+      }
+      if (dest.pos === 'inside') {
+        for (let i = oldIdx + 1; i < old.list.length; i++) {
+          const sid = old.list[i] && old.list[i].id != null ? String(old.list[i].id) : null;
+          if (sid && vis.has(sid) && targetList.some((x) => x.id === sid)) { dest = { targetId: sid, pos: 'before' }; break; }
+        }
+      }
+    }
     const op = opMove(pid, realId, dest);
     if (op) op.desc = pfx(p) + '撤销移动：把' + ref(cur.n) + '放回 v' + ui.leftVer + ' 的原位置';
     return op;
@@ -708,12 +793,11 @@ function opRestore(pid, id) {
   const lp = L && (L.pages || []).find((x) => x.id === pid);
   const old = lp && findNode(lp, id);
   if (!old) return false;
-  const restored = restoreFromSnap(old.n);
-  const oldIdx = old.list ? old.list.indexOf(old.n) : -1;
+  const restored = restoreFromSnap(old.n, ['children']);
   let list = p.root.children || (p.root.children = []);
   if (old.list === lp.overlays) list = p.overlays;
-  else if (old.par) { const parE = findNode(p, old.par.id); if (parE) list = parE.n.children || (parE.n.children = []); }
-  list.splice(oldIdx >= 0 ? Math.min(oldIdx, list.length) : list.length, 0, restored);
+  else if (old.par) { const parE = findNode(p, old.par.id); if (parE && vis.has(parE.n.id)) list = parE.n.children || (parE.n.children = []); }
+  insertNearOldSib(list, old.list, old.n, restored, vis);
   selectNode(pid, restored.id);
   return { type: 'restore', page: pid, node: restored.id, desc: pfx(p) + '从 v' + ui.leftVer + ' 恢复' + ref(restored) };
 }
@@ -770,7 +854,7 @@ function opRestorePage(pid) {
   const L = versionSnap(ui.leftVer);
   const lp = L && (L.pages || []).find((x) => x.id === pid);
   if (!lp) return false;
-  const rp = cloneWithChange(lp, 'added', ['root', 'overlays'], '');
+  const rp = restoreFromSnap(lp, ['root', 'overlays', 'children']);
   S.spec.pages.push(rp); ui.page = rp.id;
   return { type: 'restore-page', page: rp.id, desc: '从 v' + ui.leftVer + ' 恢复页面「' + pageName(rp) + '」' };
 }
@@ -802,7 +886,7 @@ function opStepRestore(fid, id) {
   const lf = L && (L.flows || []).find((x) => x.id === fid);
   const ls = lf && (lf.steps || []).find((x) => x.id === id);
   if (!ls) return false;
-  const rs = clone(ls); rs.change = 'added';
+  const rs = restoreFromSnap(ls, []);
   f.steps.push(rs);
   return { type: 'restore-step', flow: fid, step: rs.id, desc: '流程「' + f.name + '」：从 v' + ui.leftVer + ' 恢复步骤' + stepLabel(rs) };
 }
@@ -835,9 +919,9 @@ function opBeRestore(id) {
   const L = versionSnap(ui.leftVer);
   if (!L) return false;
   for (const lm of (L.backend || [])) {
-    if (lm.id === id) { const rm = cloneWithChange(lm, 'added', ['items'], ''); S.spec.backend.push(rm); return { type: 'restore-be', id: rm.id, desc: '后端：从 v' + ui.leftVer + ' 恢复模块「' + rm.name + '」' }; }
+    if (lm.id === id) { const rm = restoreFromSnap(lm, ['items']); S.spec.backend.push(rm); return { type: 'restore-be', id: rm.id, desc: '后端：从 v' + ui.leftVer + ' 恢复模块「' + rm.name + '」' }; }
     const lit = (lm.items || []).find((x) => x.id === id);
-    if (lit) { const em = S.spec.backend.find((x) => x.id === lm.id); if (!em) return false; const rit = clone(lit); rit.change = 'added'; em.items.push(rit); return { type: 'restore-be', id: rit.id, desc: '后端：从 v' + ui.leftVer + ' 恢复「' + rit.name + '」' }; }
+    if (lit) { const em = S.spec.backend.find((x) => x.id === lm.id); if (!em) return false; const rit = restoreFromSnap(lit, []); em.items.push(rit); return { type: 'restore-be', id: rit.id, desc: '后端：从 v' + ui.leftVer + ' 恢复「' + rit.name + '」' }; }
   }
   return false;
 }
@@ -858,23 +942,34 @@ function editor(resolve, field, ctx) {
     return { type: 'edit', target: ctx.target, field: field, from: old == null ? null : old, to: isEmpty(val) ? null : val, desc: ctx.prefix() + name + ' 的' + (FIELD_LABEL[field] || field) + '：' + fmtVal(field, old) + ' → ' + fmtVal(field, val) };
   });
 }
+function realNodeId(id) { const s = String(id == null ? '' : id); return s.endsWith('__from') ? s.slice(0, -6) : s; }
 function addComment(target, category, severity, text) {
   const t = Object.assign({}, target);
+  if (t.kind === 'node' && String(t.id || '').endsWith('__from')) {
+    t.ghost = true;
+    t.id = realNodeId(t.id);
+  }
   if (HAS_MULTI_VER && !t.ver) t.ver = [ui.leftVer, ui.rightVer];
   mutate(() => { S.seq = (S.seq || 0) + 1; S.comments.push({ id: 'c' + S.seq, target: t, where: whereOf(t), category: category, severity: severity, text: text, ts: new Date().toISOString() }); return null; });
 }
-function sameTarget(a, b) { return a.kind === b.kind && a.id === b.id && (a.side || '') === (b.side || ''); }
+function sameTarget(a, b) { return a.kind === b.kind && realNodeId(a.id) === realNodeId(b.id) && (a.side || '') === (b.side || ''); }
 function whereOf(t) {
   const verPfx = HAS_MULTI_VER ? '[v' + ui.leftVer + '→v' + ui.rightVer + '] ' : '';
   const sideT = t.side === 'before' ? sideLabel('before') : t.side === 'after' ? sideLabel('after') : '';
-  if (t.kind === 'node') { const p = pageById(t.page); const e = p && findNode(p, t.id); return verPfx + '页面「' + (p ? pageName(p) : t.page) + '」› ' + sideT + ' › ' + (e ? pathText(p, e.n, t.side) : '') + ' #' + t.id; }
+  if (t.kind === 'node') {
+    const p = pageById(t.page);
+    const lookupId = t.ghost ? (t.id + '__from') : t.id;
+    const e = p && (findNode(p, lookupId) || findNode(p, t.id));
+    const rid = realNodeId(t.id);
+    return verPfx + '页面「' + (p ? pageName(p) : t.page) + '」› ' + sideT + ' › ' + (e ? pathText(p, e.n, t.side) : '') + ' #' + rid + (t.ghost ? '（原位置）' : '');
+  }
   if (t.kind === 'page') { const p = pageById(t.id); return verPfx + '页面「' + (p ? pageName(p) : t.id) + '」（整页）'; }
   if (t.kind === 'flow') { const f = flowById(t.id); return verPfx + '流程「' + (f ? f.name : t.id) + '」（整个流程）'; }
   if (t.kind === 'step') { const f = flowById(t.flow); const s = f && f.steps.find((x) => x.id === t.id); return verPfx + '流程「' + (f ? f.name : t.flow) + '」› ' + sideT + ' › 步骤' + (s ? stepLabel(view(s, t.side)) : '') + ' #' + t.id; }
   if (t.kind === 'be') { const f = findBe(t.id); if (!f) return verPfx + '后端 #' + t.id; return verPfx + '后端 › ' + sideT + ' › 模块「' + f.m.name + '」' + (f.item ? ' › 「' + f.item.name + '」' : '') + ' #' + t.id; }
   return verPfx + '整体';
 }
-function commentCount(kind, id, side) { return S.comments.filter((c) => c.target.kind === kind && c.target.id === id && (c.target.side || '') === (side || '')).length; }
+function commentCount(kind, id, side) { const rid = realNodeId(id); return S.comments.filter((c) => c.target.kind === kind && realNodeId(c.target.id) === rid && (c.target.side || '') === (side || '')).length; }
 function cbadge(kind, id, side) { const n = commentCount(kind, id, side); return n ? h('span', { class: 'cmt-badge', title: n + ' 条批注' }, '💬' + n) : null; }
 function validateSel() {
   const s = ui.sel;
@@ -888,16 +983,15 @@ function validateSel() {
     if (!ok) ui.sel = null;
   }
   if (!pageById(ui.page) && CUR.pages[0]) ui.page = CUR.pages[0].id;
-  if (ui.overlayOpen) { const p = curPage(); const e = p && findNode(p, ui.overlayOpen); if (!e || !afterVisibleIds(p).has(e.n.id)) ui.overlayOpen = null; }
 }
 
 // ------------------------------------------------------------------ change marks
-/* Colors: added = green, removed = red, modified = yellow. side: before | after | merged (canvas). */
+/* Colors: added = green, removed = red, modified = yellow. side: before | after. */
 function chgOf(o, side) {
   const c = o.change;
   if (c === 'added' && side !== 'before') return ['added', o.movedFrom ? '移入' : '新增'];
   if (c === 'removed' && side !== 'after') return ['removed', o.movedTo ? '移出' : '删除'];
-  if (c === 'modified') return ['modified', side === 'before' ? '修改前' : side === 'after' ? '修改后' : '修改'];
+  if (c === 'modified') return ['modified', side === 'before' ? '修改前' : '修改后'];
   return null;
 }
 function chgClass(o, side) { const c = chgOf(o, side); return c ? 'chg chg-' + c[0] + ' side-' + side : ''; }
@@ -1075,7 +1169,8 @@ function nodeBody(v, side, n, o) {
 }
 function commentPin(n, p, eff, unitHere, c) {
   if (!ui.showPins || n === p.root) return null;
-  const cmts = S.comments.filter((x) => x.target.kind === 'node' && x.target.id === n.id && (x.target.side || '') === eff);
+  const rid = realNodeId(n.id);
+  const cmts = S.comments.filter((x) => x.target.kind === 'node' && realNodeId(x.target.id) === rid && (x.target.side || '') === eff);
   const showNote = !!(n.note && (eff === 'after' || n.change === 'removed' || ui.diffView !== 'split'));
   if (!showNote && !cmts.length) return null;
   const u = unitHere ? UNIT_BY.get(n.id) : null;
@@ -1110,18 +1205,17 @@ function applyWidth(el, w, parentLayout) {
   const m = /^(\d+)\/(\d+)$/.exec(String(w));
   if (m) { const pct = (100 * Number(m[1]) / Number(m[2])).toFixed(2); if (row) { el.style.flex = '0 0 calc(' + pct + '% - 9px)'; el.style.minWidth = '0'; } else el.style.width = pct + '%'; }
 }
-/* o: { side: before|after|merged, ctx: canvas|detail, parentLayout, whole (inside an added/removed module),
- *      unit (enclosing unit id on the canvas), ghost (rendering a removed subtree inside the merged canvas) } */
+/* o: { side: before|after, ctx: canvas|detail|play, parentLayout, whole (inside an added/removed module),
+ *      unit (enclosing unit id on the canvas), ghost (rendering a removed subtree) } */
 function renderWF(n, p, o) {
   const side = o.side;
-  let eff = side;
-  if (side === 'merged') { if (o.ghost && n.change === 'added') return null; eff = (o.ghost || n.change === 'removed') ? 'before' : 'after'; }
-  else if (!visible(n, side)) return null;
+  if (!visible(n, side)) return null;
+  const eff = side;
   if (o.ctx === 'play' && !playVisible(n)) return null;
   if (o.ctx === 'canvas' && isTabPanel(p, n) && !canvasVisible(n)) return null;
   if (o.ctx === 'canvas' && !o.asPanel && isRevealed(n, p)) {
     const sv = view(n, eff);
-    const slot = h('div', { class: 'wf wf-slot', 'data-kind': 'node', 'data-id': n.id, 'data-side': eff, 'data-unit': o.unit || null, title: '点击后才出现，内容画在旁边的单独面板里' },
+    const slot = h('div', { class: 'wf wf-slot', 'data-kind': 'node', 'data-id': n.id, 'data-side': eff, 'data-unit': o.unit || null, title: '点击后才出现，内容画在下方的交互面板区' },
       '⤷ ' + nlabel(sv) + ' · 点击 ' + showersOf(n.id).map((x) => '「' + short(x.label || x.text || x.id, 14) + '」').join('、') + ' 后在这里展开 →');
     applyWidth(slot, sv.w, o.parentLayout);
     return slot;
@@ -1130,7 +1224,7 @@ function renderWF(n, p, o) {
   const vt = v.type, t = bt(vt), kids = v.children || [], cont = isCont(v);
   const layout = v.layout || (t === 'grid' ? 'grid' : ROW_TYPES.has(t) ? 'row' : 'col');
   const isRoot = n === p.root;
-  const ghost = o.ghost || (side === 'merged' && n.change === 'removed');
+  const ghost = !!o.ghost;
   const editing = ui.mode === 'edit' && o.ctx === 'canvas' && !ghost && side !== 'before';
   const ias = interactionsOf(p, n, eff);
   const trig = ias.length > 0;
@@ -1467,10 +1561,10 @@ function drawLinks() {
     const isSplit = grp.classList.contains('is-split');
     const isDual = isSplit || grp.classList.contains('is-wipe');
     const sides = isDual ? ['before', 'after'] : ['after'];
-    const bottomArea = isDual ? q(grp, ':scope > .cv-panels-area') : null;
+    const bottomArea = q(grp, ':scope > .cv-panels-area');
     sides.forEach((modeSide) => {
       const sideFilter = '[data-side="' + modeSide + '"]';
-      const panelHost = bottomArea || (isDual ? q(grp, '.cv-ovcol.' + (modeSide === 'before' ? 'left' : 'right')) : grp);
+      const panelHost = bottomArea || grp;
       entries(p).forEach((e) => {
         if (!visible(e.n, modeSide)) return;
         const side = modeSide;
@@ -1491,9 +1585,7 @@ function drawLinks() {
           const hovered = !!(hoverKey && (hoverKey === 'ov:' + e.n.id || hoverKey === 'ov:' + i.target));
           const related = !!(hovered || (sel && (sel.id === e.n.id || sel.id === i.target || (sel.kind === 'page' && sel.id === p.id))) || (unit && (unit === i.target || sEl.dataset.unit === unit || tEl.dataset.unit === unit)));
           const inBottom = !!(bottomArea && bottomArea.contains(tEl));
-          const toPanel = tEl.classList.contains('cv-ov') && grp.contains(tEl) && i.action !== 'hide';
-          if (inBottom) { if (!ui.showLinks && !related) return; }
-          else if (!ui.showLinks && !related && !(toPanel && (ui.diffMode || ui.mode === 'edit'))) return;
+          if (!ui.showLinks && !related) return;
           addCurve(loc(sEl.getBoundingClientRect()), loc(tEl.getBoundingClientRect()), color, IA_SHORT[i.action] || i.action, { on: related, dashed: color === 'removed', from: e.n.id, to: String(i.target || ''), action: i.action, vertical: inBottom && !bottomArea.contains(sEl) });
         });
       });
@@ -1541,14 +1633,13 @@ function fitCam(animate, first) {
   if (first && w.children.length) {
     const g = w.children[0];
     const target = g.querySelector('.cv-cmp-box') || g.querySelector('.cv-pair') || g.querySelector('.cv-frame') || g;
-    const gr = g.getBoundingClientRect(), tr = target.getBoundingClientRect();
+    const tr = target.getBoundingClientRect();
     const k0 = ui.cam ? ui.cam.k : (w.getBoundingClientRect().width / (w.offsetWidth || 1) || 1);
     const wr = w.getBoundingClientRect();
     X = (tr.left - wr.left) / k0 - 20;
     Y = (tr.top - wr.top) / k0 - 20;
     W = tr.width / k0 + 40;
     H = Math.min(tr.height / k0 + 40, Math.max(900, (r.height - topPad - pad) / Math.max(0.25, (r.width - pad * 2) / W)));
-    void gr;
   }
   if (!W || !r.width) return;
   const availW = Math.max(100, r.width - pad * 2);
@@ -1663,7 +1754,7 @@ function canvasArea() {
     h('button', { title: '整个画布放进视口', onclick: () => fitCam(true) }, '适应'),
     h('span', { class: 'cv-sep' }),
     t('showLinks', '⇢ 连线', '显示按钮 → 弹层、跳页与跨画板移动连线'), t('showFn', 'ƒ 函数', '显示函数 / 接口占位'), t('showComp', '</> 组件', '显示每个模块对应的代码组件'));
-  const vp = h('div', { class: 'cv-vp' + (diffOn ? ' diff-mode' : ' clean-mode') + (ui.diffMode ? ' fade' : (ui.fade ? ' fade' : '')) + (ui.showPins ? '' : ' pins-off') + (ui.showFn ? ' show-fn' : '') + (ui.showComp ? ' show-comp' : '') + (editing ? ' editing' : ''), id: 'cv-vp' },
+  const vp = h('div', { class: 'cv-vp' + (diffOn ? ' diff-mode' : ' clean-mode') + (ui.diffMode ? ' fade' : '') + (ui.showPins ? '' : ' pins-off') + (ui.showFn ? ' show-fn' : '') + (ui.showComp ? ' show-comp' : '') + (editing ? ' editing' : ''), id: 'cv-vp' },
     world, tools,
     editing ? palette() : null,
     h('div', { class: 'cv-hint' }, editing ? (ui.diffView === 'split' ? '在右侧「' + sideLabel('after') + '」画板拖组件 = 改位置（左侧只读）· 拖空白处平移 · Ctrl/⌘+滚轮缩放' : '将滑块拖到最左可完整编辑「' + sideLabel('after') + '」画板 · 拖空白处平移 · Ctrl/⌘+滚轮缩放') : (ui.diffView === 'wipe' ? '左右拖动中间 ⇄ 滑块刮开对比前后版本 · 拖空白处平移 · Ctrl/⌘+滚轮缩放 · 悬停 💬 气泡看注释' : '拖动平移 · 滚轮上下移动 · Ctrl/⌘+滚轮缩放 · 下拉框与标签页可直接点击 · 悬停 💬 气泡看注释')));
@@ -1673,7 +1764,7 @@ function canvasArea() {
 function pageFrame(p, side, showSideTag, fullVoidWidth) {
   const whole = p.change === 'added' || p.change === 'removed';
   const isVoid = (side === 'before' && p.change === 'added') || (side === 'after' && p.change === 'removed');
-  const vPage = view(p, side === 'before' ? 'before' : 'after');
+  const vPage = view(p, side);
   const sideTag = showSideTag ? h('span', { class: 'cv-side-tag ' + side }, sideLabel(side)) : null;
   if (isVoid) {
     const w = fullVoidWidth ? (Number(p.width) || 1280) : Math.min(Number(p.width) || 1280, 420);
@@ -1682,10 +1773,10 @@ function pageFrame(p, side, showSideTag, fullVoidWidth) {
         sideTag, h('span', { class: 'dot dot-' + pageStatus(p) }), h('span', null, pageName(p)), p.route ? h('span', { class: 'route' }, p.route) : null),
       h('div', { class: 'cv-fb cv-void-body' }, side === 'before' ? (HAS_MULTI_VER ? sideLabel('before') + '没有这个页面' : '改动前没有这个页面') : (HAS_MULTI_VER ? sideLabel('after') + '已删除这个页面' : '这个页面将被删除')));
   }
-  const ghost = side === 'before' ? p.change === 'removed' : (side === 'merged' && p.change === 'removed');
+  const ghost = side === 'before' && p.change === 'removed';
   const u = whole ? UNIT_BY.get(p.id) : null;
   const o = { side: side, ctx: 'canvas', parentLayout: 'col', whole: whole, unit: whole ? p.id : null, ghost: ghost };
-  return h('div', { class: 'cv-frame' + (side !== 'merged' ? ' cv-' + side : '') + (whole ? ' mk mk-' + p.change + ' mk-u' : ''), 'data-page': p.id, 'data-side': side, style: { width: (Number(p.width) || 1280) + 'px' } },
+  return h('div', { class: 'cv-frame cv-' + side + (whole ? ' mk mk-' + p.change + ' mk-u' : ''), 'data-page': p.id, 'data-side': side, style: { width: (Number(p.width) || 1280) + 'px' } },
     u ? h('span', { class: 'u-num u-' + p.change }, String(u.n)) : null,
     u ? h('span', { class: 'u-tag u-' + p.change }, p.change === 'added' ? '整页新增' : '整页删除') : null,
     h('div', { class: 'cv-fh', 'data-kind': 'page', 'data-id': p.id, 'data-unit': whole ? p.id : null },
@@ -1854,26 +1945,6 @@ function panelsArea(p, editing) {
       list.map((item) => panelPairBox(item, p)),
       editing ? h('div', { class: 'cv-ovdrop', 'data-drop': 'overlays', 'data-page': p.id }, '把组件拖到这里，变成点击后才出现的弹层') : null));
 }
-function sidePanelsFor(p, side, onlyChanged) {
-  const whole = p.change === 'added' || p.change === 'removed';
-  const ghost = side === 'before' ? p.change === 'removed' : (side === 'merged' && p.change === 'removed');
-  const o = { side: side, ctx: 'canvas', parentLayout: 'col', whole: whole, unit: whole ? p.id : null, ghost: ghost };
-  const allow = (n) => {
-    if (side === 'merged') return !(ghost && n.change === 'added');
-    if (!visible(n, side)) return false;
-    if (onlyChanged && p.change !== 'removed') return subtreeHasChange(n);
-    return true;
-  };
-  const ovs = p.overlays.filter(allow);
-  const revs = [];
-  const scan = (n) => {
-    if (side !== 'merged' && !visible(n, side)) return;
-    if (n !== p.root && isRevealed(n, p) && allow(n)) revs.push(n);
-    (n.children || []).forEach(scan);
-  };
-  scan(p.root); p.overlays.forEach(scan);
-  return ovs.map((x) => overlayFrame(x, p, o)).concat(revs.map((n) => revealPanel(n, p, o)));
-}
 function startWipeDrag(e, key, box) {
   e.preventDefault(); e.stopPropagation();
   const move = (ev) => {
@@ -1896,11 +1967,8 @@ function pageGroup(p) {
   if (status === 'unchanged') {
     const frame = pageFrame(p, 'after', false);
     const editing = ui.mode === 'edit';
-    const panels = sidePanelsFor(p, 'after', false);
-    const left = h('div', { class: 'cv-ovcol left', 'data-page': p.id });
-    const right = h('div', { class: 'cv-ovcol right', 'data-page': p.id }, panels,
-      editing ? h('div', { class: 'cv-ovdrop', 'data-drop': 'overlays' }, '把组件拖到这里，变成点击后才出现的弹层') : null);
-    return h('div', { class: 'cv-group', 'data-page': p.id }, left, frame, right);
+    const bottomPanels = panelsArea(p, editing);
+    return h('div', { class: 'cv-group is-single', 'data-page': p.id }, frame, bottomPanels);
   }
   const editing = ui.mode === 'edit' && p.change !== 'removed';
   const bottomPanels = panelsArea(p, editing);
@@ -1941,39 +2009,9 @@ function pageGroup(p) {
   return h('div', { class: 'cv-group is-split', 'data-page': p.id }, cmpBox, bottomPanels);
 }
 const OV_W = { drawer: 440, modal: 560, menu: 300, popover: 320 };
-function overlayFrame(x, p, o) {
-  const ghost = o.ghost || x.change === 'removed';
-  const vs = o.side === 'before' ? 'before' : (o.side === 'after' ? 'after' : (ghost ? 'before' : 'after'));
-  const v = view(x, vs);
-  const trs = trigList(v).map((t) => findNode(p, t)).filter((t) => t && (o.side === 'merged' || visible(t.n, vs)));
-  const anchorIds = trs.map((t) => t.n.id);
-  return h('div', { class: 'cv-ov' + (vs === 'before' ? ' cv-ov-before' : ''), 'data-ov': x.id, 'data-side': vs, 'data-anchor': anchorIds.join(' ') || null, 'data-trigger': trigList(v).join(' ') || null, 'data-change': ghost ? 'removed' : x.change, style: { width: (OV_W[bt(v.type)] || OV_W[v.type] || 420) + 'px' } },
-    h('div', { class: 'cv-ovh' }, '▸ ' + tname(v.type) + ' · ', trs.length ? ['点击 ', trs.map((t, i) => [i ? '、' : '', h('button', { class: 'lnk', onclick: (e) => { e.stopPropagation(); focusNode(p.id, t.n.id); } }, nlabel(view(t.n, vs)))]), ' 后出现'] : '未指定由哪个元素打开'),
-    renderWF(x, p, o));
-}
-
-/* Click-revealed content (node.hidden + someone toggles/shows it): drawn as its own panel next to the screen,
- * connected to its trigger, with a slot left in the frame where it will appear. */
-function revealPanel(n, p, o) {
-  const ghost = o.ghost || n.change === 'removed';
-  const vs = o.side === 'before' ? 'before' : (o.side === 'after' ? 'after' : (ghost ? 'before' : 'after'));
-  const chain = parentChain(p, n.id).filter((x) => x !== p.root);
-  const anc = chain.find((x) => x.change !== 'unchanged');
-  const parent = chain[chain.length - 1];
-  const sh = showersOf(n.id).filter((x) => o.side === 'merged' || visible(x, vs));
-  const sub = { side: o.side, ctx: 'canvas', parentLayout: 'col', asPanel: true, ghost: ghost || o.ghost,
-    whole: o.whole || !!(anc && (anc.change === 'added' || anc.change === 'removed')), unit: o.unit || (anc ? anc.id : null) };
-  return h('div', { class: 'cv-ov cv-rev' + (vs === 'before' ? ' cv-ov-before' : ''), 'data-ov': n.id, 'data-side': vs, 'data-anchor': sh.map((x) => x.id).join(' '), 'data-slot': n.id, 'data-change': ghost ? 'removed' : (anc ? anc.change : n.change), style: { width: (Number(n.pw) || (bt(n.type) === 'list' || bt(n.type) === 'menu' ? 360 : 480)) + 'px' } },
-    h('div', { class: 'cv-ovh' }, '▸ 点击 ', sh.map((t, i) => [i ? '、' : '', h('button', { class: 'lnk', onclick: (e) => { e.stopPropagation(); focusNode(p.id, t.id); } }, nlabel(view(t, vs)))]),
-      ' 后展开', parent ? ' · 在 ' + nlabel(view(parent, vs)) + ' 里' : '',
-      h('button', { class: 'lnk', onclick: (e) => { e.stopPropagation(); const sl = document.querySelector('#cv-world .wf-slot[data-id="' + CSS.escape(n.id) + '"][data-side="' + vs + '"]') || document.querySelector('#cv-world .wf-slot[data-id="' + CSS.escape(n.id) + '"]'); if (sl) focusEl(sl); } }, '看位置')),
-    renderWF(n, p, sub));
-}
-/* Equalize wipe heights (pages + paired overlay panels), size bottom panel trays,
- * and align side columns for single-frame unchanged pages. */
+/* Equalize wipe heights (pages + paired overlay panels) and align bottom panel trays with their page width. */
 function layoutPanels() {
   const w = worldEl(); if (!w) return;
-  const wr = w.getBoundingClientRect(); const k = wr.width / (w.offsetWidth || 1) || 1;
   w.querySelectorAll('.cv-wipe').forEach((wp) => {
     const bf = wp.querySelector('.cv-wipe-before > .cv-frame, .cv-wipe-before > .cv-ov');
     const af = wp.querySelector('.cv-wipe-after > .cv-frame, .cv-wipe-after > .cv-ov');
@@ -1984,53 +2022,9 @@ function layoutPanels() {
     }
   });
   w.querySelectorAll('.cv-group').forEach((g) => {
-    const isDual = g.classList.contains('is-split') || g.classList.contains('is-wipe');
-    if (isDual) {
-      const mainBox = g.querySelector(':scope > .cv-cmp-box');
-      const area = g.querySelector(':scope > .cv-panels-area');
-      if (mainBox && area && mainBox.offsetWidth) area.style.maxWidth = mainBox.offsetWidth + 'px';
-      return;
-    }
-    const L = g.querySelector('.cv-ovcol.left'), R = g.querySelector('.cv-ovcol.right'); if (!L || !R) return;
-    const singleFr = g.querySelector('.cv-frame');
-    const drop = R.querySelector('.cv-ovdrop');
-    const panels = [...g.querySelectorAll('.cv-ov')];
-    const info = new Map();
-    const gr = g.getBoundingClientRect();
-    panels.forEach((pn) => {
-      const frame = singleFr;
-      const fr = frame ? frame.getBoundingClientRect() : gr;
-      const ids = (pn.dataset.anchor || '').split(' ').filter(Boolean);
-      let a = null, host = null;
-      for (const id of ids) {
-        if (frame) { a = frame.querySelector('[data-kind="node"][data-id="' + CSS.escape(id) + '"]'); if (a) break; }
-        const inPanel = panels.find((x) => x !== pn && x.querySelector('[data-kind="node"][data-id="' + CSS.escape(id) + '"]'));
-        if (inPanel) { host = inPanel; break; }
-      }
-      const r = a && a.getBoundingClientRect();
-      const side = a && a.closest('.t-sidebar') && a.closest('.t-sidebar').getBoundingClientRect().right < (fr.left + fr.right) / 2 ? 'L' : 'R';
-      info.set(pn, { y: r ? (r.top - gr.top) / k : 1e9, side: side, host: host, kids: [] });
-    });
-    panels.forEach((pn) => { const x = info.get(pn); if (x.host) info.get(x.host).kids.push(pn); });
-    const sideOf = (pn) => { const x = info.get(pn); return x.host ? sideOf(x.host) : x.side; };
-    ['L', 'R'].forEach((side) => {
-      const col = side === 'L' ? L : R;
-      const roots = panels.filter((pn) => !info.get(pn).host && sideOf(pn) === side).sort((a, b) => info.get(a).y - info.get(b).y);
-      const order = [];
-      const addKids = (pn) => info.get(pn).kids.forEach((c) => { order.push([c, false]); addKids(c); });
-      roots.forEach((pn) => { order.push([pn, true]); addKids(pn); });
-      let cur = 0, first = true;
-      order.forEach(([pn, isRoot]) => {
-        col.append(pn);
-        const want = isRoot && info.get(pn).y < 1e9 ? info.get(pn).y - 30 : cur + (first ? 0 : 28);
-        const m = Math.max(first ? 0 : 28, want - cur);
-        pn.style.marginTop = m + 'px';
-        cur += m + pn.offsetHeight; first = false;
-      });
-    });
-    if (drop) { R.append(drop); drop.style.marginTop = '28px'; }
-    L.classList.toggle('empty', !L.children.length);
-    R.classList.toggle('empty', !R.children.length);
+    const mainBox = g.querySelector(':scope > .cv-cmp-box') || g.querySelector(':scope > .cv-frame');
+    const area = g.querySelector(':scope > .cv-panels-area');
+    if (mainBox && area && mainBox.offsetWidth) area.style.maxWidth = mainBox.offsetWidth + 'px';
   });
 }
 
@@ -2485,7 +2479,7 @@ function inspNode(s, compact) {
   if (!compact && n.note) out.push(h('div', { class: 'ins-note' }, h('b', null, 'Agent 说明：'), n.note));
   const bb = !compact && buiBlock(v.type); if (bb) out.push(bb);
   if (!compact && n.before && n.change === 'modified') out.push(diffBox(n));
-  if (!compact && n.movedFrom || n.movedTo) out.push(h('div', { class: 'ins-note' }, n.movedFrom ? '这是从原位置移过来的。' : '这个元素被移到了新位置。', h('button', { class: 'lnk', onclick: () => focusNode(p.id, n.movedFrom || n.movedTo) }, '定位另一处')));
+  if (!compact && (n.movedFrom || n.movedTo)) out.push(h('div', { class: 'ins-note' }, n.movedFrom ? '这是从原位置移过来的。' : '这个元素被移到了新位置。', h('button', { class: 'lnk', onclick: () => focusNode(p.id, n.movedFrom || n.movedTo) }, '定位另一处')));
   if (editable) out.push(nodeEditor(p, n, e));
   else {
     if (v.fn) out.push(fld('函数 / 行为', h('code', null, v.fn)));
@@ -2622,7 +2616,7 @@ function inspBe(s) {
 // ------------------------------------------------------------------ feedback
 function targetExists(t) {
   if (!t) return false;
-  if (t.kind === 'node') { const p = pageById(t.page); return !!(p && findNode(p, t.id)); }
+  if (t.kind === 'node') { const p = pageById(t.page); return !!(p && (findNode(p, t.ghost ? (t.id + '__from') : t.id) || findNode(p, t.id))); }
   if (t.kind === 'page') return !!pageById(t.id);
   if (t.kind === 'flow') return !!flowById(t.id);
   if (t.kind === 'step') { const f = flowById(t.flow); return !!(f && f.steps.some((x) => x.id === t.id)); }
@@ -2642,10 +2636,11 @@ function jump(t) {
     }
     computeUnits();
   }
-  if (t.kind === 'node' || t.kind === 'page') { ui.tab = 'canvas'; ui.page = t.page || t.id; ui.unit = t.kind === 'node' ? unitOf(t.page, t.id) : (UNIT_BY.has(t.id) ? t.id : null); }
+  const resolvedId = t.kind === 'node' && t.ghost && pageById(t.page) && findNode(pageById(t.page), t.id + '__from') ? (t.id + '__from') : t.id;
+  if (t.kind === 'node' || t.kind === 'page') { ui.tab = 'canvas'; ui.page = t.page || t.id; ui.unit = t.kind === 'node' ? unitOf(t.page, resolvedId) : (UNIT_BY.has(t.id) ? t.id : null); }
   else if (t.kind === 'flow' || t.kind === 'step') ui.tab = 'flows';
   else if (t.kind === 'be') ui.tab = 'backend';
-  ui.sel = Object.assign({}, t);
+  ui.sel = Object.assign({}, t, { id: resolvedId });
   validateSel(); save(); render(); scrollToSel();
 }
 function renderFeedback() {
@@ -2669,7 +2664,7 @@ function renderFeedback() {
         h('button', { class: 'primary', onclick: copyFeedback }, '复制反馈'),
         h('button', { class: 'ok' + (S.approved ? ' on' : ''), onclick: () => mutate(() => { S.approved = !S.approved; return null; }), title: '没有意见或意见不影响方向时勾选，Agent 会开始实现' }, S.approved ? '✓ 已确认方案' : '确认方案，可以开始做'),
         h('button', { onclick: () => download('feedback.md', buildMarkdown(ui.includeSpec), 'text/markdown'), title: '部分预览环境（沙箱）不允许下载' }, '下载 .md')),
-      h('label', { class: 'hint', style: 'display:flex;gap:6px;align-items:center;margin-bottom:8px' }, h('input', { type: 'checkbox', checked: ui.includeSpec, style: 'width:auto', onchange: (e) => { ui.includeSpec = e.target.checked; render(); } }), '另外附带完整方案 JSON（备用：一般不需要；Agent 说补丁应用不上时再勾选）'),
+      h('label', { class: 'hint', style: 'display:flex;gap:6px;align-items:center;margin-bottom:8px' }, h('input', { type: 'checkbox', checked: ui.includeSpec, style: 'width:auto', onchange: (e) => { ui.includeSpec = e.target.checked; render(); } }), '另外附带完整方案 JSON（备用：补丁应用失败时，Agent 可加 --use-full 改用完整方案）'),
       h('textarea', { class: 'md', id: 'smyw-out', 'data-f': 'smyw-out', readonly: true, value: md, onfocus: (e) => e.target.select() })));
 }
 function answersList() {
@@ -2687,13 +2682,15 @@ function stripSpec(sp) {
 function cleanSpec() {
   const sp = stripSpec(clone(S.spec));
   sp.basedOnVersion = BASE.version;
+  sp.basedOnHash = BASE_HASH;
   return sp;
 }
-/* ---- node-level patch (smyw-patch@1): what the user changed, relative to the spec the agent wrote.
+/* ---- node-level patch (smyw-patch@2): what the user changed, relative to the spec the agent wrote.
  * Every id-bearing object (page, node, flow, step, backend module / item) is addressed by id.
- * ops: del {id} · move {id,parent,key} · add {parent,key,node} · set {id,set,unset} · order {parent,key,ids} · top {set,unset}
- * parent "#spec" = the spec itself; key = pages | flows | backend | root | overlays | children | steps | items. */
-const PATCH_SKIP_TOP = new Set(['pages', 'flows', 'backend', 'version', 'basedOnVersion']);
+ * ops: add {parent,key,node} · move {id,parent,key} · del {id} · set {id,set,unset} · order {parent,key,ids} · top {set,unset}
+ * Applied in order: add -> move -> del -> set -> order -> top.
+ * New containers in add strip existing nodes (which arrive via explicit move ops), so add never collides with existing ids. */
+const PATCH_SKIP_TOP = new Set(['pages', 'flows', 'backend', 'version', 'basedOnVersion', 'basedOnHash']);
 function flatSpec(sp) {
   const nodes = new Map(), lists = new Map();
   const put = (o, kind, parent, key) => {
@@ -2702,13 +2699,13 @@ function flatSpec(sp) {
     const own = kind === 'page' ? ['root', 'overlays'] : kind === 'node' ? ['children'] : kind === 'flow' ? ['steps'] : kind === 'mod' ? ['items'] : [];
     Object.keys(o).forEach((k) => { if (own.indexOf(k) < 0) fields[k] = o[k]; });
     nodes.set(id, { kind: kind, parent: parent, key: key, fields: fields, obj: o });
-    const kids = (k, list, ck) => { if (!Array.isArray(list)) return; lists.set(id + ' ' + k, list.map((x) => String(x.id))); list.forEach((x) => put(x, ck, id, k)); };
+    const kids = (k, list, ck) => { if (!Array.isArray(list)) return; lists.set(id + '\0' + k, { parent: id, key: k, ids: list.map((x) => String(x.id)) }); list.forEach((x) => put(x, ck, id, k)); };
     if (kind === 'page') { if (o.root) put(o.root, 'node', id, 'root'); kids('overlays', o.overlays, 'node'); }
     else if (kind === 'node') kids('children', o.children, 'node');
     else if (kind === 'flow') kids('steps', o.steps, 'step');
     else if (kind === 'mod') kids('items', o.items, 'item');
   };
-  [['pages', 'page'], ['flows', 'flow'], ['backend', 'mod']].forEach((x) => { const list = sp[x[0]] || []; lists.set('#spec ' + x[0], list.map((o) => String(o.id))); list.forEach((o) => put(o, x[1], '#spec', x[0])); });
+  [['pages', 'page'], ['flows', 'flow'], ['backend', 'mod']].forEach((x) => { const list = sp[x[0]] || []; lists.set('#spec\0' + x[0], { parent: '#spec', key: x[0], ids: list.map((o) => String(o.id)) }); list.forEach((o) => put(o, x[1], '#spec', x[0])); });
   const top = {}; Object.keys(sp).forEach((k) => { if (!PATCH_SKIP_TOP.has(k)) top[k] = sp[k]; });
   return { nodes: nodes, lists: lists, top: top };
 }
@@ -2718,6 +2715,27 @@ function fieldDiff(a, b) {
   Object.keys(a).forEach((k) => { if (!(k in b)) unset.push(k); });
   return Object.keys(set).length || unset.length ? { set: set, unset: unset } : null;
 }
+function stripExistingFromAdded(node, kind, existingNodes) {
+  const c = clone(node);
+  const walk = (x, k) => {
+    if (!x || typeof x !== 'object') return;
+    if (k === 'page') {
+      if (x.root) {
+        if (existingNodes.has(String(x.root.id))) delete x.root;
+        else walk(x.root, 'node');
+      }
+      if (Array.isArray(x.overlays)) x.overlays = x.overlays.filter((ch) => !existingNodes.has(String(ch.id))).map((ch) => { walk(ch, 'node'); return ch; });
+    } else if (k === 'node' && Array.isArray(x.children)) {
+      x.children = x.children.filter((ch) => !existingNodes.has(String(ch.id))).map((ch) => { walk(ch, 'node'); return ch; });
+    } else if (k === 'flow' && Array.isArray(x.steps)) {
+      x.steps = x.steps.filter((ch) => !existingNodes.has(String(ch.id)));
+    } else if (k === 'mod' && Array.isArray(x.items)) {
+      x.items = x.items.filter((ch) => !existingNodes.has(String(ch.id)));
+    }
+  };
+  walk(c, kind);
+  return c;
+}
 function specPatch() {
   const A = flatSpec(stripSpec(normalize(clone(BASE)))), B = flatSpec(stripSpec(clone(S.spec)));
   const ops = [];
@@ -2725,16 +2743,26 @@ function specPatch() {
   A.nodes.forEach((a, id) => { if (!B.nodes.has(id) && (a.parent === '#spec' || B.nodes.has(a.parent))) ops.push({ op: 'del', id: id }); });
   B.nodes.forEach((b, id) => {
     const a = A.nodes.get(id);
-    if (isNew(b.parent)) return;
-    if (!a) { ops.push({ op: 'add', parent: b.parent, key: b.key, node: clone(b.obj) }); return; }
+    if (!a) {
+      if (isNew(b.parent)) return;
+      ops.push({ op: 'add', parent: b.parent, key: b.key, node: stripExistingFromAdded(b.obj, b.kind, A.nodes) });
+      return;
+    }
     if (a.parent !== b.parent || a.key !== b.key) ops.push({ op: 'move', id: id, parent: b.parent, key: b.key });
     const d = fieldDiff(a.fields, b.fields);
     if (d) { const op = { op: 'set', id: id, set: d.set }; if (d.unset.length) op.unset = d.unset; ops.push(op); }
   });
-  B.lists.forEach((ids, k) => { const parent = k.split(' ')[0]; if (isNew(parent)) return; if (!same(A.lists.get(k) || null, ids)) ops.push({ op: 'order', parent: parent, key: k.split(' ')[1], ids: ids }); });
+  B.lists.forEach((entry, k) => {
+    if (isNew(entry.parent)) {
+      if (entry.ids.some((id) => A.nodes.has(id))) ops.push({ op: 'order', parent: entry.parent, key: entry.key, ids: entry.ids });
+      return;
+    }
+    const prev = A.lists.get(k);
+    if (!same(prev ? prev.ids : null, entry.ids)) ops.push({ op: 'order', parent: entry.parent, key: entry.key, ids: entry.ids });
+  });
   const t = fieldDiff(A.top, B.top);
   if (t) { const op = { op: 'top', set: t.set }; if (t.unset.length) op.unset = t.unset; ops.push(op); }
-  return { format: 'smyw-patch@1', base: BASE.version, ops: ops };
+  return { format: 'smyw-patch@2', base: BASE.version, baseHash: BASE_HASH, ops: ops };
 }
 function exportJSON() {
   return { format: 'smyw-feedback@1', title: S.spec.title, baseVersion: BASE.version, stage: S.spec.stage, exportedAt: new Date().toISOString(), approved: !!S.approved, global: S.global, answers: answersList(), comments: S.comments, ops: S.ops, patch: specPatch(), revisedSpec: cleanSpec() };
@@ -2820,6 +2848,7 @@ window.smyw = {
     add: (pid, type, dest) => mutate(() => opAdd(pid, type, dest || {})),
     remove: (pid, id) => mutate(() => opDelete(pid, id)),
     restore: (pid, id) => mutate(() => opRestore(pid, id)),
+    restorePage: (pid) => mutate(() => opRestorePage(pid)),
     convert: (pid, id, kind) => mutate(() => opConvert(pid, id, kind || 'dialog')),
     sibling: (pid, id, dir) => mutate(() => opSibling(pid, id, dir)),
     edit: (pid, id, field, val) => editor(() => { const p = ePageById(pid); const e = p && findNode(p, id); return e && e.n; }, field, { target: { kind: 'node', page: pid, id: id }, name: ref, prefix: () => pfx(ePageById(pid)) })(val),

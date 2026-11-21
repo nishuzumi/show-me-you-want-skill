@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // smyw build: validate a change spec and inline it into one self-contained preview HTML.
-// Usage: node build.mjs <spec.json> [-o preview.html] [--check]
+// Usage: node build.mjs <spec.json> [-o preview.html] [--check] [--no-theme] [--no-archive]
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
 import { dirname, resolve, join, relative, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { specHash } from './lib.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const assets = join(here, '..', 'assets');
@@ -18,7 +19,7 @@ const IA_ACTIONS = new Set(['open', 'close', 'navigate', 'toggle', 'show', 'hide
 const ACTORS = new Set(['user', 'frontend', 'backend', 'db', 'external', 'system']);
 
 function usage(code) {
-  console.log('用法: node build.mjs <spec.json> [-o <out.html>] [--check]\n  默认输出到 spec 同目录的 preview.html；--check 只校验不生成。');
+  console.log('用法: node build.mjs <spec.json> [-o <out.html>] [--check] [--no-theme] [--no-archive]\n  默认输出到 spec 同目录的 preview.html；--check 只校验不生成；--no-theme 跳过项目主题提取；--no-archive 跳过自动归档 spec-v<N>.json。');
   process.exit(code);
 }
 
@@ -60,7 +61,6 @@ const css = readFileSync(join(assets, 'style.css'), 'utf8');
 const runtime = readFileSync(join(assets, 'runtime.js'), 'utf8');
 const themeRes = noTheme ? { css: '', source: null } : extractProjectTheme(specPath, spec);
 if (themeRes.source) console.log('· 主题：已从 ' + themeRes.source + ' 提取项目配色与圆角');
-if (!noArchive) archiveCurrentSpec(specPath, raw, spec);
 const versions = collectVersions(specPath, spec);
 if (versions.length > 2) {
   const prev = versions[versions.length - 2].version, latest = versions[versions.length - 1].version;
@@ -80,12 +80,13 @@ const html = template
 const outPath = resolve(out || join(dirname(specPath), 'preview.html'));
 mkdirSync(dirname(outPath), { recursive: true });
 writeFileSync(outPath, html);
+if (!noArchive) archiveCurrentSpec(specPath, raw, spec);
 console.log('✔ 已生成 ' + outPath + '（' + Math.round(html.length / 1024) + ' KB）');
 console.log('  ' + pathToFileURL(outPath).href);
 
 function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
 
-/* Auto-archive current spec.json as spec-v<N>.json so manual version bumps never lose prior history. */
+/* Auto-archive current spec.json as spec-v<N>.json after HTML generation succeeds. */
 function archiveCurrentSpec(specFile, rawText, specObj) {
   const ver = Number(specObj.version) || 1;
   const dir = dirname(specFile);
@@ -93,9 +94,18 @@ function archiveCurrentSpec(specFile, rawText, specObj) {
   const dest = join(dir, 'spec-v' + ver + '.json');
   if (resolve(dest) === resolve(specFile)) return;
   try {
-    if (existsSync(dest) && readFileSync(dest, 'utf8') === rawText) return;
+    if (existsSync(dest)) {
+      const oldText = readFileSync(dest, 'utf8');
+      if (oldText === rawText) return;
+      let sameContent = false;
+      try { sameContent = specHash(JSON.parse(oldText)) === specHash(specObj); } catch { sameContent = false; }
+      if (sameContent) return;
+      console.log('⚠ 已更新同版本归档 ' + basename(dest) + '（如属于新一轮迭代，请递增 spec.version）');
+    }
     writeFileSync(dest, rawText);
-  } catch { /* ignore archive write error */ }
+  } catch (err) {
+    console.log('⚠ 自动归档 ' + dest + ' 失败：' + err.message);
+  }
 }
 
 /* Extract a pure before or after snapshot from a merged smyw spec tree. */
@@ -167,13 +177,23 @@ function collectVersions(specFile, curSpec) {
     for (const f of readdirSync(dir)) {
       const m = /^spec-v(\d+)\.json$/.exec(f);
       if (!m) continue;
+      const fileVer = Number(m[1]);
+      if (fileVer === curVer) continue;
       try {
         const obj = JSON.parse(readFileSync(join(dir, f), 'utf8'));
-        const v = Number(obj.version) || Number(m[1]);
-        if (v > 0 && v <= curVer) byVer.set(v, obj);
-      } catch { /* skip unreadable history */ }
+        const objVer = obj && obj.version != null ? Number(obj.version) : fileVer;
+        if (objVer !== fileVer) {
+          console.log('⚠ 跳过历史文件 ' + f + '：文件内 version=' + objVer + ' 与文件名 v' + fileVer + ' 不一致');
+          continue;
+        }
+        if (fileVer > 0 && fileVer < curVer) byVer.set(fileVer, obj);
+      } catch (err) {
+        console.log('⚠ 跳过损坏的历史文件 ' + f + '：' + err.message);
+      }
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    console.log('⚠ 扫描历史版本目录失败：' + err.message);
+  }
   byVer.set(curVer, curSpec);
   const nums = [...byVer.keys()].sort((a, b) => a - b);
   // Build v0 baseline by merging the first-seen before state of every existing page / flow / module across v1..vN.
@@ -257,12 +277,13 @@ function extractProjectTheme(specFile, specObj) {
         return String(val).replace(/var\(--([a-zA-Z0-9-]+)\)/g, (all, k) => (rawVars[k] ? resolveVar(rawVars[k], depth + 1) : all));
       };
       let count = 0;
+      const fileFound = {};
       for (const [k, uiVar] of Object.entries(TOKEN_MAP)) {
         if (!rawVars[k]) continue;
         const nv = normCssVal(k, resolveVar(rawVars[k]));
-        if (nv) { found[uiVar] = nv; count++; }
+        if (nv) { fileFound[uiVar] = nv; count++; }
       }
-      if (count >= 3) { source = relative(root, fp); break; }
+      if (count >= 3) { Object.assign(found, fileFound); source = relative(root, fp); break; }
     }
   }
   if (specObj && specObj.theme && typeof specObj.theme === 'object' && !Array.isArray(specObj.theme)) {
@@ -291,8 +312,8 @@ function validate(spec) {
   const iaRefs = [];
   let buiCount = 0;
   const reg = (o, where) => {
-    if (o.id == null) return;
-    const k = String(o.id);
+    const k = o.id == null ? '' : String(o.id).trim();
+    if (!k) { errors.push(where + '：缺少 id（补丁与多版本 diff 都按 id 定位，所有页面/节点/流程/步骤/后端条目必须有非空 id）'); return; }
     if (ids.has(k)) errors.push('重复的 id "' + k + '"：' + ids.get(k) + ' 与 ' + where + '（id 在整个 spec 内必须唯一）');
     else ids.set(k, where);
   };
@@ -314,7 +335,7 @@ function validate(spec) {
       if (!n || typeof n !== 'object' || Array.isArray(n)) { errors.push(where0 + '：children 里有非对象元素'); return; }
       const where = pw + ' › ' + (n.label || n.type || '?') + (n.id ? ' #' + n.id : '');
       reg(n, where); chk(n, where); if (n !== p.root) bump(cnt.nodes, n);
-      if (n.id != null) pageIds.add(String(n.id)); else warnings.push(where + '：没有 id（会自动生成，但反馈里引用不稳定，建议补上）');
+      if (n.id != null && String(n.id).trim()) pageIds.add(String(n.id).trim());
       if (n.type && !TYPES.has(n.type)) warnings.push(where + '：未知组件类型 "' + n.type + '"，将按通用方框显示');
       if (n.type && BUI_COMPONENTS[n.type]) buiCount++;
       if (n.before && n.before.children) errors.push(where + '：before 里不能放 children；子元素的增删请标在子元素自己身上');
@@ -361,7 +382,6 @@ function validate(spec) {
     for (const [t, where, k] of moves) if (!pageIds.has(t)) warnings.push(where + '：' + k + ' "' + t + '" 在本页面找不到');
   }
   const flows = Array.isArray(spec.flows) ? spec.flows : [];
-  const allNodeIds = new Set();
   const nodeById = new Map();
   for (const p of pages) { const walk = (n) => { if (n && typeof n === 'object' && n.id != null) nodeById.set(String(n.id), n); if (n && typeof n === 'object') (Array.isArray(n.children) ? n.children : []).forEach(walk); }; walk(p.root); (Array.isArray(p.overlays) ? p.overlays : []).forEach(walk); }
   for (const [t, act, where, st] of iaRefs) {
@@ -370,7 +390,6 @@ function validate(spec) {
     if (!tn) { warnings.push(where + '：' + (act === 'trigger' ? 'trigger' : act + ' 的 target') + ' "' + t + '" 找不到'); continue; }
     if (act === 'state' && st != null && !(tn.states && tn.states[st])) warnings.push(where + '：目标 #' + t + ' 没有状态 "' + st + '"（先在它的 states 里写上）');
   }
-  for (const p of pages) { const walk = (n) => { if (n && typeof n === 'object') { if (n.id != null) allNodeIds.add(String(n.id)); (Array.isArray(n.children) ? n.children : []).forEach(walk); } }; walk(p.root); (Array.isArray(p.overlays) ? p.overlays : []).forEach(walk); }
   for (const f of flows) {
     const fw = '流程「' + (f.name || f.id || '?') + '」';
     reg(f, fw); chk(f, fw);
@@ -380,7 +399,7 @@ function validate(spec) {
       reg(s, sw); chk(s, sw); bump(cnt.steps, s);
       if (s.actor && !ACTORS.has(s.actor)) warnings.push(sw + '：actor "' + s.actor + '" 不是常用值（user / frontend / backend / db / external / system），会作为自定义泳道显示');
       if (s.page && !pages.some((p) => p.id === s.page)) warnings.push(sw + '：page "' + s.page + '" 不存在');
-      for (const ref of s.node == null ? [] : (Array.isArray(s.node) ? s.node : [s.node])) if (!allNodeIds.has(String(ref))) warnings.push(sw + '：node "' + ref + '" 在页面里找不到');
+      for (const ref of s.node == null ? [] : (Array.isArray(s.node) ? s.node : [s.node])) if (!nodeById.has(String(ref))) warnings.push(sw + '：node "' + ref + '" 在页面里找不到');
     }
   }
   const backend = Array.isArray(spec.backend) ? spec.backend : [];

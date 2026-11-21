@@ -8,6 +8,8 @@ spec 是一个 JSON 对象。只有 `title` 加上 `pages` / `flows` / `backend`
   "summary": "一两段话说明这次改动",        // 画布左侧「这次改什么」，可换行
   "stage": "prototype",                     // prototype（未实现）| implementing | done（实现后回顾）
   "version": 1,                             // 每次根据反馈修改后 +1
+  "versionNote": "本轮修改的一句话摘要",      // 可选：多版本下拉框里展示的本轮说明
+  "theme": { "primary": "#4F46E5", "radius": "6px" }, // 可选：覆盖自动从项目 globals.css 提取的主题变量
   "changes": [                              // 变更要点（写进反馈，供 Agent 对照）
     { "area": "frontend", "change": "added", "text": "新增标签管理页" }
   ],                                        // area: frontend | backend | data | api | flow | other；也可以直接写字符串
@@ -66,9 +68,10 @@ spec 是一个 JSON 对象。只有 `title` 加上 `pages` / `flows` / `backend`
 | `fn` | 函数/行为/接口占位：`onClick → openEditor()`、`GET /api/tags` |
 | `children` | 子节点（容器类型） |
 | `layout` | `col`（纵向）/ `row`（横向）/ `grid`（配合 `cols`） |
+| `cols` | `layout: "grid"` 时的列数（数字，默认 2） |
 | `w` | 宽度：`"1/4"` `"1/3"` `"1/2"` `"2/3"` `"3/4"` `"full"`，或 flex 权重数字 |
 | `variant` | 按钮类：`primary` / `secondary` / `danger` / `ghost` / `icon` |
-| `items` | nav / tabs / list / menu / select / combobox / autocomplete / radio-group / checkbox-group / accordion / menubar / navigation-menu / toggle-group 的条目。条目可以是字符串，也可以是 `{"label": "...", "change": "added"}` |
+| `items` | nav / tabs / list / menu / context-menu / select / combobox / autocomplete / radio-group / menubar / navigation-menu / toggle-group 的条目。条目可以是字符串，也可以是 `{"label": "...", "change": "added"}` |
 | `columns` | table 的列，格式同 items（适合表达"新增一列、删掉一列"） |
 | `rows` | table 的占位行数，默认 2 |
 | `lines` | text 的灰色占位行数 |
@@ -196,17 +199,17 @@ smyw 的组件框架是 **Base UI**（`@base-ui/react`，v1.9.0）。spec 的 `t
 <details><summary>revisedSpec（备用：完整方案）</summary> …   ← 只在用户勾选时出现
 ~~~
 
-### smyw-patch@1
+### smyw-patch@2（兼容旧版 smyw-patch@1）
 
-`base` 是补丁基于的 spec 版本，必须等于磁盘上 spec.json 的 version，否则脚本拒绝应用。节点（页面、元素、弹层、流程、步骤、后端模块和条目）都按 `id` 定位；`parent` 为 `"#spec"` 表示 spec 本身。
+`base` 是补丁基于的 spec 版本，`baseHash` 是规范化后的内容哈希，两者必须与磁盘上的 `spec.json` 一致，否则脚本拒绝应用（除非显式加 `--force`）。若补丁应用失败且反馈中附带了 `revisedSpec`，可显式传 `--use-full` 改用完整方案（同样执行版本与哈希校验）。节点（页面、元素、弹层、流程、步骤、后端模块和条目）都按 `id` 定位；`parent` 为 `"#spec"` 表示 spec 本身。
 
 | op | 字段 | 含义 |
 |---|---|---|
-| `del` | `id` | 删掉这个节点（连同子节点） |
+| `add` | `parent` `key` `node` | 新增节点，`node` 只包含新子树（已有节点通过独立 `move` 迁入），遇重复 id 报错 |
 | `move` | `id` `parent` `key` | 挪到另一个容器（key：pages / flows / backend / root / overlays / children / steps / items） |
-| `add` | `parent` `key` `node` | 新增节点，`node` 是带子节点的完整内容 |
-| `set` | `id` `set` `unset` | 改这个节点自己的字段（不含子节点），`unset` 是要删掉的字段名 |
+| `del` | `id` | 删掉这个节点（连同子节点） |
+| `set` | `id` `set` `unset` | 改这个节点自己的非结构字段，`unset` 是要删掉的字段名 |
 | `order` | `parent` `key` `ids` | 这个容器里子节点的最终顺序 |
-| `top` | `set` `unset` | 改 spec 顶层字段（title、summary…） |
+| `top` | `set` `unset` | 改 spec 顶层非保留字段（title、summary…） |
 
-`scripts/apply-feedback.mjs` 按 del → move → add → set → order → top 的顺序应用。补丁和「完整方案」应用后的结果完全一致（端到端测试里有校验）。
+`scripts/apply-feedback.mjs` 对 `smyw-patch@2` 按 `add → move → del → set → order → top` 的顺序应用（对旧版 `@1` 保持 `del → move → add → set → order → top` 兼容），应用后自动递增 `version` 并清空上一版继承的 `versionNote`。`--dry-run` 日志输出到 `stderr`，`stdout` 输出纯 JSON。
