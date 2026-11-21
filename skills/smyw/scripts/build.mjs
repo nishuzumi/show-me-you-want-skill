@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // smyw build: validate a change spec and inline it into one self-contained preview HTML.
 // Usage: node build.mjs <spec.json> [-o preview.html] [--check]
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { dirname, resolve, join } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { dirname, resolve, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -23,11 +23,12 @@ function usage(code) {
 }
 
 const args = process.argv.slice(2);
-let specPath = null, out = null, checkOnly = false;
+let specPath = null, out = null, checkOnly = false, noTheme = false;
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
   if (a === '-o' || a === '--out') out = args[++i];
   else if (a === '--check') checkOnly = true;
+  else if (a === '--no-theme') noTheme = true;
   else if (a === '-h' || a === '--help') usage(0);
   else if (!specPath) specPath = a;
   else usage(2);
@@ -56,11 +57,13 @@ if (checkOnly) { console.log('✔ 校验通过'); process.exit(0); }
 const template = readFileSync(join(assets, 'template.html'), 'utf8');
 const css = readFileSync(join(assets, 'style.css'), 'utf8');
 const runtime = readFileSync(join(assets, 'runtime.js'), 'utf8');
+const themeRes = noTheme ? { css: '', source: null } : extractProjectTheme(specPath, spec);
+if (themeRes.source) console.log('· 主题：已从 ' + themeRes.source + ' 提取项目配色与圆角');
 const specJson = JSON.stringify(spec).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 const buiJson = JSON.stringify(BUI).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 const html = template
   .replace('__TITLE__', () => escapeHtml((spec.title || 'smyw') + ' · 变更预览'))
-  .replace('/*__STYLE__*/', () => css)
+  .replace('/*__STYLE__*/', () => css + (themeRes.css ? '\n' + themeRes.css : ''))
   .replace('/*__RUNTIME__*/', () => runtime.replace(/<\/script/gi, '<\\/script'))
   .replace('__BUI__', () => buiJson)
   .replace('__SPEC__', () => specJson);
@@ -71,6 +74,78 @@ console.log('✔ 已生成 ' + outPath + '（' + Math.round(html.length / 1024) 
 console.log('  ' + pathToFileURL(outPath).href);
 
 function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
+
+/* Zero-token project theme extraction: find the target repo's globals.css / index.css and map :root
+ * semantic tokens (--background, --primary, --card, --border, --radius…) onto --ui-* prototype vars. */
+function findProjectRoot(fromDir) {
+  let d = fromDir;
+  for (let i = 0; i < 6; i++) {
+    if (existsSync(join(d, '.smyw'))) return d;
+    if (existsSync(join(d, 'package.json')) || existsSync(join(d, '.git'))) return d;
+    const up = dirname(d);
+    if (up === d) break;
+    d = up;
+  }
+  return null;
+}
+function normCssVal(key, raw) {
+  const v = String(raw || '').trim().replace(/\s*!important\s*$/, '');
+  if (!v || /var\(/i.test(v)) return null;
+  if (key !== 'radius' && key !== 'font-sans' && key !== 'font-mono' && /^\d+(\.\d+)?\s+\d+(\.\d+)?%\s+\d+(\.\d+)?%(\s*\/\s*[\d.%]+)?$/.test(v)) return 'hsl(' + v + ')';
+  return v;
+}
+function extractProjectTheme(specFile, specObj) {
+  const TOKEN_MAP = {
+    background: '--ui-bg', foreground: '--ui-fg', card: '--ui-card', 'card-foreground': '--ui-card-fg',
+    primary: '--ui-primary', 'primary-foreground': '--ui-primary-fg',
+    secondary: '--ui-secondary', 'secondary-foreground': '--ui-secondary-fg',
+    muted: '--ui-muted', 'muted-foreground': '--ui-muted-fg',
+    destructive: '--ui-destructive', border: '--ui-border', input: '--ui-input', ring: '--ui-ring',
+    radius: '--ui-radius', 'font-sans': '--ui-font', 'font-mono': '--ui-mono'
+  };
+  const found = {};
+  let source = null;
+  const root = findProjectRoot(dirname(specFile));
+  if (root) {
+    const cands = ['src/app/globals.css', 'app/globals.css', 'src/index.css', 'src/globals.css', 'src/styles/globals.css', 'styles/globals.css', 'src/App.css', 'src/main.css'];
+    for (const rel of cands) {
+      const fp = join(root, rel);
+      if (!existsSync(fp)) continue;
+      let text = '';
+      try { text = readFileSync(fp, 'utf8'); } catch { continue; }
+      const rawVars = {};
+      const rootRe = /:root\s*\{([^}]+)\}/g;
+      let m;
+      while ((m = rootRe.exec(text)) !== null) {
+        const declRe = /--([a-zA-Z0-9-]+)\s*:\s*([^;]+);/g;
+        let d;
+        while ((d = declRe.exec(m[1])) !== null) rawVars[d[1]] = d[2].trim();
+      }
+      // Resolve simple var(--other) references within the same :root
+      const resolveVar = (val, depth = 0) => {
+        if (depth > 4) return val;
+        return String(val).replace(/var\(--([a-zA-Z0-9-]+)\)/g, (all, k) => (rawVars[k] ? resolveVar(rawVars[k], depth + 1) : all));
+      };
+      let count = 0;
+      for (const [k, uiVar] of Object.entries(TOKEN_MAP)) {
+        if (!rawVars[k]) continue;
+        const nv = normCssVal(k, resolveVar(rawVars[k]));
+        if (nv) { found[uiVar] = nv; count++; }
+      }
+      if (count >= 3) { source = relative(root, fp); break; }
+    }
+  }
+  if (specObj && specObj.theme && typeof specObj.theme === 'object' && !Array.isArray(specObj.theme)) {
+    const alias = { bg: 'background', fg: 'foreground', text: 'foreground', accent: 'primary' };
+    for (const [k, val] of Object.entries(specObj.theme)) {
+      const tk = alias[k] || k;
+      if (TOKEN_MAP[tk] && val != null && String(val).trim()) { found[TOKEN_MAP[tk]] = String(val).trim(); source = source ? source + ' + spec.theme' : 'spec.theme'; }
+    }
+  }
+  const entries = Object.entries(found);
+  if (!entries.length) return { css: '', source: null };
+  return { css: '/* project theme */\n:root{' + entries.map(([k, v]) => k + ':' + v).join(';') + '}', source };
+}
 
 function validate(spec) {
   const errors = [], warnings = [];

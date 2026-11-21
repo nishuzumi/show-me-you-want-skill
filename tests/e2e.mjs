@@ -54,21 +54,27 @@ await open(join(work, 'preview.html'));
 await ev('localStorage.clear(); return true');
 
 console.log('canvas overview');
-check('runtime booted from file:// with storage', await ev('return smyw.storageOk === true && smyw.ui.tab === "canvas"'));
-const ov = await ev('return { frames: document.querySelectorAll(".cv-frame").length, units: smyw.units.length, items: document.querySelectorAll(".cv-item").length, nums: document.querySelectorAll("#cv-world .u-num").length, cam: smyw.ui.cam }');
-check('one frame per page, one numbered box per change unit, list matches', ov.frames === 3 && ov.units >= 5 && ov.items === ov.units && ov.nums === ov.units && ov.cam && ov.cam.k > 0 && ov.cam.k <= 1, ov);
+check('runtime booted from file:// with storage in clean split preview', await ev('return smyw.storageOk === true && smyw.ui.tab === "canvas" && smyw.ui.diffView === "split" && smyw.ui.diffMode === false'));
+const ov = await ev('return { groups: document.querySelectorAll(".cv-group").length, cmpBoxes: document.querySelectorAll(".cv-cmp-box").length, bridges: document.querySelectorAll(".cv-bridge-arrow").length, beforeFrames: document.querySelectorAll(".cv-frame.cv-before").length, afterFrames: document.querySelectorAll(".cv-frame.cv-after").length, units: smyw.units.length, items: document.querySelectorAll(".cv-item").length, beforeHasAdded: document.querySelectorAll(".cv-frame.cv-before .mk-added").length, afterHasRemoved: document.querySelectorAll(".cv-frame.cv-after .mk-removed").length, pins: document.querySelectorAll("#cv-world .cv-pin").length, selects: document.querySelectorAll("#cv-world select.wf-select").length, cam: smyw.ui.cam }');
+check('split view wraps each page in a comparison box with before/after bridge, real selects, and Figma comment pins', ov.groups === 3 && ov.cmpBoxes === 3 && ov.bridges === 3 && ov.beforeFrames === 3 && ov.afterFrames === 3 && ov.units >= 5 && ov.items === ov.units && ov.beforeHasAdded === 0 && ov.afterHasRemoved === 0 && ov.pins >= 3 && ov.selects >= 1 && ov.cam && ov.cam.k > 0 && ov.cam.k <= 1, ov);
+check('clean preview hides diff outlines by default', await ev('const el = document.querySelector("#cv-world .cv-frame.cv-after .mk-u.mk-modified"); return document.getElementById("cv-vp").classList.contains("clean-mode") && el && getComputedStyle(el).outlineStyle === "none"'));
+await ev('smyw.setDiffMode(true); return true'); await sleep(150);
+check('diff mode dims unchanged nodes and highlights modified in yellow', await ev('const vp = document.getElementById("cv-vp"); const el = document.querySelector("#cv-world .cv-frame.cv-after .mk-u.mk-modified"); return vp.classList.contains("diff-mode") && vp.classList.contains("fade") && el && getComputedStyle(el).outlineColor === "rgb(226, 164, 0)"'));
 check('whole added/removed modules: only the outer box is marked', await ev('return document.querySelectorAll("#cv-world .mk-added.mk-u .mk, #cv-world .mk-removed.mk-u .mk").length === 0'));
-check('whole page added = green frame, removed = red frame', await ev('return !!document.querySelector(".cv-frame.mk-added[data-page=tag-admin]") && !!document.querySelector(".cv-frame.mk-removed[data-page=category-admin]")'));
-const yel = await ev('const el = document.querySelector("#cv-world .mk-u.mk-modified"); return el ? getComputedStyle(el).outlineColor : null');
-check('modified is drawn yellow', yel === 'rgb(226, 164, 0)', yel);
+check('whole page added = green frame, removed = red frame, with opposite void placeholders', await ev('return !!document.querySelector(".cv-frame.cv-after.mk-added[data-page=tag-admin]") && !!document.querySelector(".cv-frame.cv-before.cv-void[data-page=tag-admin]") && !!document.querySelector(".cv-frame.cv-before.mk-removed[data-page=category-admin]") && !!document.querySelector(".cv-frame.cv-after.cv-void[data-page=category-admin]")'));
 check('unchanged modules are real modules, not placeholders', await ev('return [...document.querySelectorAll("#cv-world .wf-comp")].some(e => e.textContent.includes("SideNav"))'));
+check('toolbar offers split and wipe views only (no after-only or merged)', await ev('const bs = [...document.querySelectorAll(".cv-tools [data-dv]")].map(b => b.dataset.dv); return bs.join(",") === "split,wipe"'));
+await ev('smyw.setDiffView("wipe"); return true'); await sleep(200);
+const wipe = await ev('const box = document.querySelector(".cv-wipe[data-page=task-list]"); const bf = box && box.querySelector(".cv-wipe-before > .cv-frame"); const af = box && box.querySelector(".cv-wipe-after > .cv-frame"); smyw.setWipePos("task-list", 35); return { view: smyw.ui.diffView, wipes: document.querySelectorAll(".cv-wipe").length, handles: document.querySelectorAll(".cv-wipe-handle").length, pos: box ? box.style.getPropertyValue("--wipe") : "", sameH: !!(bf && af && bf.offsetHeight === af.offsetHeight) }');
+check('wipe view overlays before/after frames with draggable handle, equalized height, and adjustable slider position', wipe.view === 'wipe' && wipe.wipes === 3 && wipe.handles === 3 && wipe.pos === '35%' && wipe.sameH, wipe);
+await ev('smyw.setDiffView("split"); smyw.setDiffMode(false); return true'); await sleep(200);
 await shot('01-canvas');
 
 console.log('detail panel');
 await ev('[...document.querySelectorAll(".cv-item")].find(b => b.textContent.includes("新建任务")).click(); return true');
 await sleep(500);
-const dt = await ev('return { unit: smyw.ui.unit, cmp: document.querySelectorAll("#inspector .dt-cmp .dt-render").length, diff: !!document.querySelector("#inspector .diff"), hl: !!document.querySelector("#cv-world .u-sel"), steps: [...document.querySelectorAll("#inspector .dt-list li")].length }');
-check('clicking a change opens before/after detail with field diff and related steps', dt.unit === 'btn-new' && dt.cmp === 2 && dt.diff && dt.hl && dt.steps >= 1, dt);
+const dt = await ev('return { unit: smyw.ui.unit, cmp: document.querySelectorAll("#inspector .dt-cmp .dt-render").length, diff: !!document.querySelector("#inspector .diff"), hl: !!document.querySelector("#cv-world .u-sel"), steps: [...document.querySelectorAll("#inspector .dt-list li")].length, stickyTop: !!document.querySelector("#inspector > .ins-top"), scrollBody: !!document.querySelector("#inspector > .ins-scroll"), dockedCbox: !!document.querySelector("#inspector > .ins-foot .cbox"), noTip: !document.querySelector("#inspector .ins-tip") }');
+check('clicking a change opens before/after detail with sticky header, docked comment box, field diff and related steps', dt.unit === 'btn-new' && dt.cmp === 2 && dt.diff && dt.hl && dt.steps >= 1 && dt.stickyTop && dt.scrollBody && dt.dockedCbox && dt.noTip, dt);
 await ev('smyw.focusUnit("task-form-card"); return true'); await sleep(500);
 check('added unit: before side says it did not exist', await ev('return !!document.querySelector("#inspector .dt-void") && document.querySelectorAll("#inspector .dt-render").length === 1'));
 await ev('const n = document.querySelector("#cv-world [data-id=f-save]"); n.click(); return true');
@@ -115,14 +121,16 @@ const dnd = await ev([
   'return { indicator, ids, id, after: ids.indexOf(id) === ids.indexOf("btn-new") + 1 };'
 ].join('\n'));
 check('dragging on the canvas moves the button into the toolbar', dnd.after && /drop-after/.test(dnd.indicator), dnd);
+await ev('smyw.ui.sel = null; smyw.ui.unit = null; smyw.render(); smyw.fit(); return true'); await sleep(300);
 const pal = await ev([
   'const pdrag = (src, x, y) => { const r = src.getBoundingClientRect(); const o = { bubbles: true, pointerId: 3, button: 0, buttons: 1, clientX: r.left + 4, clientY: r.top + 4 }; src.dispatchEvent(new PointerEvent("pointerdown", o)); for (let i = 1; i <= 5; i++) document.dispatchEvent(new PointerEvent("pointermove", Object.assign({}, o, { clientX: o.clientX + (x - o.clientX) * i / 5, clientY: o.clientY + (y - o.clientY) * i / 5 }))); const ind = document.querySelector(".drop-before, .drop-after, .drop-inside"); const cls = ind ? ind.className : ""; document.dispatchEvent(new PointerEvent("pointerup", Object.assign({}, o, { clientX: x, clientY: y, buttons: 0 }))); return cls; };',
   'const item = [...document.querySelectorAll(".pal-item")].find(e => e.textContent === "按钮");',
-  'const dst = document.querySelector("#cv-world [data-id=header]");',
+  'const dst = document.querySelector("#cv-world [data-id=header][data-side=after]");',
   'const r = dst.getBoundingClientRect(); pdrag(item, r.left + r.width/2, r.top + r.height/2);',
   FIND, 'return find(P.root, "header").children.map(c => c.type + ":" + c.change);'
 ].join('\n'));
 check('palette drag adds a new button inside the header', pal.includes('button:added') && pal.length === 3, pal);
+check('before frame stays read-only (no draggable nodes) in edit mode', await ev('return document.querySelectorAll("#cv-world .cv-frame.cv-before [data-drag]").length === 0'));
 await ev('smyw.op.edit("task-list", "user-menu", "label", "我的账户 ▾"); return true');
 const edited = await ev(FIND + 'const u = find(P.root, "user-menu"); return { change: u.change, before: u.before, label: u.label, unit: smyw.units.some(x => x.id === "user-menu") }');
 check('editing an existing element marks it modified (new yellow unit)', edited.change === 'modified' && edited.before.label === '用户 ▾' && edited.unit, edited);
@@ -173,14 +181,14 @@ await shot('06-v2');
 console.log('helpdesk-ai example (one real screen, multi-trigger connectors)');
 await open(join(skill, 'examples', 'helpdesk-ai', 'preview.html'));
 await ev('localStorage.clear(); return true');
-const ds = await ev('return { units: smyw.units.map(u => u.id), frames: document.querySelectorAll(".cv-frame").length, cols: ["queue", "detail", "customer"].every(id => !!document.querySelector("#cv-world [data-id=" + id + "]")) }');
-check('queue, detail and customer panel are drawn as one screen with 8 changes', ds.frames === 1 && ds.units.length === 8 && ds.cols, ds);
-await ev('document.querySelector("#pl-frame") ; return 1');
-const panel = await ev('await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); return { menu: !!document.querySelector("#cv-links path.cv-link[data-from=t-assign][data-to=assign-menu]"), revealed: !!document.querySelector("#cv-world .cv-rev[data-ov=c-sim-1-detail]"), slot: !!document.querySelector("#cv-world .cv-frame .wf-slot[data-id=c-sim-1-detail]"), revLink: !!document.querySelector("#cv-links path.cv-link[data-from=c-sim-1][data-to=c-sim-1-detail]"), nested: !!document.querySelector("#cv-world .cv-rev[data-ov=as-3-sub]") }');
-check('secondary menus and click-revealed content are separate panels, linked to their trigger by default', panel.menu && panel.revealed && panel.slot && panel.revLink && panel.nested, panel);
+const ds = await ev('return { units: smyw.units.map(u => u.id), groups: document.querySelectorAll(".cv-group").length, frames: document.querySelectorAll(".cv-frame").length, cols: ["queue", "detail", "customer"].every(id => !!document.querySelector("#cv-world .cv-frame.cv-after [data-id=" + id + "]")) }');
+check('queue, detail and customer panel are drawn as one screen (split into before/after) with 8 changes', ds.groups === 1 && ds.frames === 2 && ds.units.length === 8 && ds.cols, ds);
+await ev('smyw.setDiffMode(true); return 1');
+const panel = await ev('await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); return { menu: !!document.querySelector("#cv-links path.cv-link[data-from=t-assign][data-to=assign-menu]"), revealed: !!document.querySelector("#cv-world .cv-rev[data-ov=c-sim-1-detail]"), slot: !!document.querySelector("#cv-world .cv-frame.cv-after .wf-slot[data-id=c-sim-1-detail]"), revLink: !!document.querySelector("#cv-links path.cv-link[data-from=c-sim-1][data-to=c-sim-1-detail]"), nested: !!document.querySelector("#cv-world .cv-rev[data-ov=as-3-sub]") }');
+check('secondary menus and click-revealed content are separate panels, linked to their trigger in diff mode', panel.menu && panel.revealed && panel.slot && panel.revLink && panel.nested, panel);
 await ev('smyw.ui.showLinks = true; smyw.render(); return 1');
-const link = await ev('await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); const p = document.querySelector("#cv-links path.cv-link[data-from=ai-edit]"); if (!p) return null; const t = document.querySelector("#cv-world .cv-frame [data-id=ai-edit]").getBoundingClientRect(); const o = document.querySelector("#cv-world .cv-ov[data-ov=ai-drawer]").getBoundingClientRect(); const pr = p.getBoundingClientRect(); return { to: p.dataset.to, startsNearTrigger: Math.abs(pr.left - t.right) < 12, endsAtOverlay: Math.abs(pr.right - o.left) < 12, toDrawer: document.querySelectorAll("#cv-links path[data-to=ai-drawer]").length, removedDashed: !!document.querySelector("#cv-links path.dashed[data-to=quick-modal]") }');
-check('curved connectors: every trigger links to its overlay, removed ones dashed', link && link.to === 'ai-drawer' && link.startsNearTrigger && link.endsAtOverlay && link.toDrawer === 2 && link.removedDashed, link);
+const link = await ev('await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); const p = document.querySelector("#cv-links path.cv-link[data-from=ai-edit]"); if (!p) return null; const t = document.querySelector("#cv-world .cv-frame.cv-after [data-id=ai-edit]").getBoundingClientRect(); const o = document.querySelector("#cv-world .cv-ov[data-ov=ai-drawer]").getBoundingClientRect(); const pr = p.getBoundingClientRect(); return { to: p.dataset.to, startsNearTrigger: Math.abs(pr.left - t.right) < 12, endsAtOverlay: Math.abs(pr.right - o.left) < 12, toDrawer: document.querySelectorAll("#cv-links path[data-to=ai-drawer]").length, removedDashed: !!document.querySelector("#cv-links path.dashed[data-to=quick-modal]"), moveLink: !!document.querySelector("#cv-links path[data-diff-link=move][data-from=t-resolve]") }');
+check('curved connectors: every trigger links to its overlay, removed ones dashed, and cross-frame move links render', link && link.to === 'ai-drawer' && link.startsNearTrigger && link.endsAtOverlay && link.toDrawer === 2 && link.removedDashed && link.moveLink, link);
 await shot('07b-connector');
 await ev('smyw.ui.showLinks = false; smyw.render(); return 1');
 
@@ -216,8 +224,11 @@ await shot('07-helpdesk-unit');
 console.log('base-ui example (Base UI primitives)');
 await open(join(skill, 'examples', 'base-ui', 'preview.html'));
 await ev('localStorage.clear(); return true');
-const bu = await ev('return { buiScript: !!document.getElementById("smyw-bui"), dialogs: document.querySelectorAll("#cv-world [data-bui=dialog]").length, switchNode: !!document.querySelector("#cv-world [data-bui=switch]"), toast: !!document.querySelector("#cv-world [data-bui=toast]"), tabLabels: [...document.querySelectorAll("#cv-world [data-id=team-tabs-list] .wf-lbl")].map(x => x.textContent) }');
-check('base-ui example renders Dialog / Switch / Toast primitives', bu.buiScript && bu.dialogs === 1 && bu.switchNode && bu.toast && bu.tabLabels.includes('成员'), bu);
+const bu = await ev('return { buiScript: !!document.getElementById("smyw-bui"), dialogs: document.querySelectorAll("#cv-world [data-bui=dialog]").length, switchNode: !!document.querySelector("#cv-world [data-bui=switch]"), toast: !!document.querySelector("#cv-world [data-bui=toast]"), tabLabels: [...document.querySelectorAll("#cv-world [data-id=team-tabs-list] .wf-lbl")].map(x => x.textContent), inlineTabs: !document.querySelector("#cv-world .cv-rev[data-ov=roles]") && !!document.querySelector("#cv-world [data-id=members]") && !document.querySelector("#cv-world [data-id=roles]") }');
+check('base-ui example renders Dialog / Switch / Toast primitives and keeps Tabs panels in-place', bu.buiScript && bu.dialogs === 1 && bu.switchNode && bu.toast && bu.tabLabels.includes('成员') && bu.inlineTabs, bu);
+await ev('document.querySelector("#cv-world [data-id=tab-roles]").click(); return 1'); await sleep(150);
+check('clicking a tab button switches tab panels directly on the canvas', await ev('return !document.querySelector("#cv-world [data-id=members]") && !!document.querySelector("#cv-world [data-id=roles]")'));
+await ev('document.querySelector("#cv-world [data-id=tab-members]").click(); return 1'); await sleep(150);
 await ev('smyw.focusUnit("invite-dialog"); return 1'); await sleep(500);
 const dbi = await ev('const b = document.querySelector("#inspector .bui"); return b ? { text: b.textContent, importOk: b.textContent.includes("@base-ui/react/dialog"), parts: b.textContent.includes("Root · Trigger") } : null');
 check('Base UI detail shows the Dialog import and anatomy', !!dbi && dbi.importOk && dbi.parts, dbi);
