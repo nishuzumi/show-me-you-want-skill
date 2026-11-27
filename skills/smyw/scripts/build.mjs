@@ -23,71 +23,96 @@ function usage(code) {
   process.exit(code);
 }
 
-const args = process.argv.slice(2);
-let specPath = null, out = null, checkOnly = false, noTheme = false, noArchive = false;
-for (let i = 0; i < args.length; i++) {
-  const a = args[i];
-  if (a === '-o' || a === '--out') out = args[++i];
-  else if (a === '--check') checkOnly = true;
-  else if (a === '--no-theme') noTheme = true;
-  else if (a === '--no-archive') noArchive = true;
-  else if (a === '-h' || a === '--help') usage(0);
-  else if (!specPath) specPath = a;
-  else usage(2);
-}
-if (!specPath) usage(2);
-specPath = resolve(specPath);
-
-let raw;
-try { raw = readFileSync(specPath, 'utf8'); } catch (e) { console.error('✖ 读不到 spec：' + specPath + '\n  ' + e.message); process.exit(1); }
-let spec;
-try { spec = JSON.parse(raw); } catch (e) {
-  const m = /position (\d+)/.exec(e.message);
-  let where = '';
-  if (m) { const pos = Number(m[1]); const line = raw.slice(0, pos).split('\n').length; where = '（第 ' + line + ' 行附近）'; }
-  console.error('✖ spec 不是合法 JSON' + where + '：' + e.message);
-  process.exit(1);
-}
-
-const { errors, warnings, summary } = validate(spec);
-for (const w of warnings) console.log('⚠ ' + w);
-for (const e of errors) console.error('✖ ' + e);
-console.log(summary);
-if (errors.length) { console.error('✖ 有 ' + errors.length + ' 个错误，未生成。'); process.exit(1); }
-if (checkOnly) { console.log('✔ 校验通过'); process.exit(0); }
-
-const template = readFileSync(join(assets, 'template.html'), 'utf8');
-const css = readFileSync(join(assets, 'style.css'), 'utf8');
-const runtime = readFileSync(join(assets, 'runtime.js'), 'utf8');
-const themeRes = noTheme ? { css: '', source: null } : extractProjectTheme(specPath, spec);
-if (themeRes.source) console.log('· 主题：已从 ' + themeRes.source + ' 提取项目配色与圆角');
-const versions = collectVersions(specPath, spec);
-if (versions.length > 2) {
-  const prev = versions[versions.length - 2].version, latest = versions[versions.length - 1].version;
-  console.log('· 历史版本：' + versions.map((v) => 'v' + v.version + (v.version === 0 ? '（现状）' : '')).join(' → ') + '（默认对比 v' + prev + ' → v' + latest + '）');
-}
 const escJson = (o) => JSON.stringify(o).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
-const specJson = escJson(spec);
-const versionsJson = escJson(versions);
-const buiJson = escJson(BUI);
-const html = template
-  .replace('__TITLE__', () => escapeHtml((spec.title || 'smyw') + ' · 变更预览'))
-  .replace('/*__STYLE__*/', () => css + (themeRes.css ? '\n' + themeRes.css : ''))
-  .replace('/*__RUNTIME__*/', () => runtime.replace(/<\/script/gi, '<\\/script'))
-  .replace('__BUI__', () => buiJson)
-  .replace('__VERSIONS__', () => versionsJson)
-  .replace('__SPEC__', () => specJson);
-const outPath = resolve(out || join(dirname(specPath), 'preview.html'));
-mkdirSync(dirname(outPath), { recursive: true });
-writeFileSync(outPath, html);
-if (!noArchive) archiveCurrentSpec(specPath, raw, spec);
-console.log('✔ 已生成 ' + outPath + '（' + Math.round(html.length / 1024) + ' KB）');
-console.log('  ' + pathToFileURL(outPath).href);
+
+export function loadSpecData(specFile, opts = {}) {
+  const resolved = resolve(specFile);
+  const raw = readFileSync(resolved, 'utf8');
+  let spec;
+  try { spec = JSON.parse(raw); } catch (e) {
+    const m = /position (\d+)/.exec(e.message);
+    let where = '';
+    if (m) { const pos = Number(m[1]); const line = raw.slice(0, pos).split('\n').length; where = '（第 ' + line + ' 行附近）'; }
+    const err = new Error('spec 不是合法 JSON' + where + '：' + e.message);
+    err.code = 'INVALID_JSON';
+    throw err;
+  }
+  const { errors, warnings, summary } = validate(spec);
+  const versions = errors.length ? [] : collectVersions(resolved, spec, opts.quiet);
+  return { specPath: resolved, raw, spec, errors, warnings, summary, versions };
+}
+
+export function buildPreview(specFile, opts = {}) {
+  const data = loadSpecData(specFile, opts);
+  if (data.errors.length || opts.checkOnly) return Object.assign(data, { html: null, themeSource: null });
+  const template = readFileSync(join(assets, 'template.html'), 'utf8');
+  const css = readFileSync(join(assets, 'style.css'), 'utf8');
+  const runtime = readFileSync(join(assets, 'runtime.js'), 'utf8');
+  const themeRes = opts.noTheme ? { css: '', source: null } : extractProjectTheme(data.specPath, data.spec);
+  const specJson = escJson(data.spec);
+  const versionsJson = escJson(data.versions);
+  const buiJson = escJson(BUI);
+  const liveJson = escJson(opts.liveConfig || null);
+  const html = template
+    .replace('__TITLE__', () => escapeHtml((data.spec.title || 'smyw') + ' · 变更预览'))
+    .replace('/*__STYLE__*/', () => css + (themeRes.css ? '\n' + themeRes.css : ''))
+    .replace('/*__RUNTIME__*/', () => runtime.replace(/<\/script/gi, '<\\/script'))
+    .replace('__BUI__', () => buiJson)
+    .replace('__VERSIONS__', () => versionsJson)
+    .replace('__SPEC__', () => specJson)
+    .replace('__LIVE__', () => liveJson);
+  return Object.assign(data, { html, themeSource: themeRes.source });
+}
+
+export function archiveSpec(specFile, rawText, specObj, quiet) {
+  return archiveCurrentSpec(specFile, rawText, specObj, quiet);
+}
+
+const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+if (isMain) {
+  const args = process.argv.slice(2);
+  let specPath = null, out = null, checkOnly = false, noTheme = false, noArchive = false;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '-o' || a === '--out') out = args[++i];
+    else if (a === '--check') checkOnly = true;
+    else if (a === '--no-theme') noTheme = true;
+    else if (a === '--no-archive') noArchive = true;
+    else if (a === '-h' || a === '--help') usage(0);
+    else if (!specPath) specPath = a;
+    else usage(2);
+  }
+  if (!specPath) usage(2);
+  let res;
+  try {
+    res = buildPreview(specPath, { checkOnly, noTheme });
+  } catch (e) {
+    if (e.code === 'INVALID_JSON') console.error('✖ ' + e.message);
+    else console.error('✖ 读不到 spec：' + resolve(specPath) + '\n  ' + e.message);
+    process.exit(1);
+  }
+  for (const w of res.warnings) console.log('⚠ ' + w);
+  for (const e of res.errors) console.error('✖ ' + e);
+  console.log(res.summary);
+  if (res.errors.length) { console.error('✖ 有 ' + res.errors.length + ' 个错误，未生成。'); process.exit(1); }
+  if (checkOnly) { console.log('✔ 校验通过'); process.exit(0); }
+  if (res.themeSource) console.log('· 主题：已从 ' + res.themeSource + ' 提取项目配色与圆角');
+  if (res.versions.length > 2) {
+    const prev = res.versions[res.versions.length - 2].version, latest = res.versions[res.versions.length - 1].version;
+    console.log('· 历史版本：' + res.versions.map((v) => 'v' + v.version + (v.version === 0 ? '（现状）' : '')).join(' → ') + '（默认对比 v' + prev + ' → v' + latest + '）');
+  }
+  const outPath = resolve(out || join(dirname(res.specPath), 'preview.html'));
+  mkdirSync(dirname(outPath), { recursive: true });
+  writeFileSync(outPath, res.html);
+  if (!noArchive) archiveCurrentSpec(res.specPath, res.raw, res.spec);
+  console.log('✔ 已生成 ' + outPath + '（' + Math.round(res.html.length / 1024) + ' KB）');
+  console.log('  ' + pathToFileURL(outPath).href);
+}
 
 function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
 
 /* Auto-archive current spec.json as spec-v<N>.json after HTML generation succeeds. */
-function archiveCurrentSpec(specFile, rawText, specObj) {
+function archiveCurrentSpec(specFile, rawText, specObj, quiet) {
   const ver = Number(specObj.version) || 1;
   const dir = dirname(specFile);
   if (/^spec-v\d+\.json$/.test(basename(specFile))) return;
@@ -100,11 +125,11 @@ function archiveCurrentSpec(specFile, rawText, specObj) {
       let sameContent = false;
       try { sameContent = specHash(JSON.parse(oldText)) === specHash(specObj); } catch { sameContent = false; }
       if (sameContent) return;
-      console.log('⚠ 已更新同版本归档 ' + basename(dest) + '（如属于新一轮迭代，请递增 spec.version）');
+      if (!quiet) console.log('⚠ 已更新同版本归档 ' + basename(dest) + '（如属于新一轮迭代，请递增 spec.version）');
     }
     writeFileSync(dest, rawText);
   } catch (err) {
-    console.log('⚠ 自动归档 ' + dest + ' 失败：' + err.message);
+    if (!quiet) console.log('⚠ 自动归档 ' + dest + ' 失败：' + err.message);
   }
 }
 
@@ -169,7 +194,7 @@ function extractSpecSide(sp, side) {
   out.backend = (Array.isArray(sp.backend) ? sp.backend : []).map((m) => extractObj(m, side, ['items'])).filter(Boolean);
   return out;
 }
-function collectVersions(specFile, curSpec) {
+function collectVersions(specFile, curSpec, quiet) {
   const curVer = Number(curSpec.version) || 1;
   const dir = dirname(specFile);
   const byVer = new Map();
@@ -183,16 +208,16 @@ function collectVersions(specFile, curSpec) {
         const obj = JSON.parse(readFileSync(join(dir, f), 'utf8'));
         const objVer = obj && obj.version != null ? Number(obj.version) : fileVer;
         if (objVer !== fileVer) {
-          console.log('⚠ 跳过历史文件 ' + f + '：文件内 version=' + objVer + ' 与文件名 v' + fileVer + ' 不一致');
+          if (!quiet) console.log('⚠ 跳过历史文件 ' + f + '：文件内 version=' + objVer + ' 与文件名 v' + fileVer + ' 不一致');
           continue;
         }
         if (fileVer > 0 && fileVer < curVer) byVer.set(fileVer, obj);
       } catch (err) {
-        console.log('⚠ 跳过损坏的历史文件 ' + f + '：' + err.message);
+        if (!quiet) console.log('⚠ 跳过损坏的历史文件 ' + f + '：' + err.message);
       }
     }
   } catch (err) {
-    console.log('⚠ 扫描历史版本目录失败：' + err.message);
+    if (!quiet) console.log('⚠ 扫描历史版本目录失败：' + err.message);
   }
   byVer.set(curVer, curSpec);
   const nums = [...byVer.keys()].sort((a, b) => a - b);
@@ -227,7 +252,7 @@ function collectVersions(specFile, curSpec) {
 
 /* Zero-token project theme extraction: find the target repo's globals.css / index.css and map :root
  * semantic tokens (--background, --primary, --card, --border, --radius…) onto --ui-* prototype vars. */
-function findProjectRoot(fromDir) {
+export function findProjectRoot(fromDir) {
   let d = fromDir;
   for (let i = 0; i < 6; i++) {
     if (existsSync(join(d, '.smyw'))) return d;

@@ -241,6 +241,31 @@ spec 里的 `type` 直接写 Base UI 的原语，Agent 按组件来拼：
 
 > 在沙箱预览里，浏览器可能不允许保存进度或自动复制。页面会提示；复制失败时会自动选中全部反馈，按 Ctrl / ⌘ + C 即可。
 
+### 15. 实时交互 Agent 窗口（Live Preview）
+
+除了离线打开单文件 `preview.html`，也可以启动零依赖本地服务，采用**「主 Agent 零功耗长等 + 直接热改」**的模式在网页右侧实时修改方案（平时 0 轮询 0 token、无常驻 Subagent、复用主对话热缓存响应最快、不绑特定平台）：
+
+```bash
+# 1. 启动本地实时预览服务（仅监听 127.0.0.1，零外部依赖）
+node skills/smyw/scripts/serve.mjs .smyw/<dir>/spec.json
+
+# 2. 主 Agent 后台挂起零轮询长等待（--brief 只吐极简指针，等待期间 0 token）
+node skills/smyw/scripts/bridge.mjs wait .smyw/<dir>/spec.json --brief --timeout 0
+
+# 3. 唤醒后主 Agent 直接改 spec.json、串联 build + reply 热更新画布，再继续 wait：
+node skills/smyw/scripts/bridge.mjs status .smyw/<dir>/spec.json "正在调整布局…"
+node skills/smyw/scripts/build.mjs .smyw/<dir>/spec.json && node skills/smyw/scripts/bridge.mjs reply .smyw/<dir>/spec.json --text "已改成右侧抽屉"
+node skills/smyw/scripts/bridge.mjs stop .smyw/<dir>/spec.json
+```
+
+在 Claude Code 中也可以使用内置的 `--driver claude` 按需分叉当前会话（首次自动 `--fork-session`，不污染主对话，支持流式输出）：
+
+```bash
+node skills/smyw/scripts/serve.mjs .smyw/<dir>/spec.json --driver claude --resume <session_id>
+```
+
+在网页上点选任意元素后直接提问或提修改意见，会自动附带选中节点的 `#id`、当前未提交的画布拖拽补丁与批注；Agent 更新 `spec.json` 后画布原地**无刷新热更新**并自动定位到本轮增量对比 `v(N-1) → vN`。离线直接打开 `preview.html` 时聊天窗自动隐藏，保持纯静态单文件体验不变。
+
 ## 反馈回到 Agent 之后
 
 Agent 会把你粘贴的反馈存成 `feedback-v<N>.md`，然后：
@@ -283,6 +308,8 @@ skills/smyw/                  skill 本体（复制或链接这个目录即可�
   references/base-ui.md       Base UI 组件映射与组合规则
   scripts/build.mjs           spec.json → preview.html
   scripts/apply-feedback.mjs  从粘贴回来的反馈生成下一版 spec
+  scripts/serve.mjs           零依赖本地实时预览服务（网页 Agent 聊天 + 画布热更新）
+  scripts/bridge.mjs          给当前对话 / Subagent 接单的桥接命令行
   assets/base-ui.json         Base UI 组件元数据（类型、import、parts）
   assets/                     运行时、样式、模板
   examples/                   base-ui（团队设置）、helpdesk-ai（一整屏）、task-tags（多页面）

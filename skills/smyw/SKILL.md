@@ -11,12 +11,14 @@ whenToUse: 用户提出新功能、改版或重构，且会新增/删除/修改�
 本 skill 目录（下文称 `$SKILL`）里有：
 - `scripts/build.mjs`：校验 spec，生成单文件 `preview.html`（纯前端、无外部依赖、离线可开）
 - `scripts/apply-feedback.mjs`：从用户粘贴回来的反馈里取出修改后的方案，生成下一版 spec
+- `scripts/serve.mjs`：（可选）零依赖本地实时预览服务，在网页右侧增加实时 Agent 对话窗口并支持画布热更新
+- `scripts/bridge.mjs`：（可选）配合 `serve.mjs` 使用的接单命令行，让当前对话或专属 Subagent 接收网页消息、推送进度和回复
 - `references/spec-format.md`：spec 完整字段说明，**第一次写 spec 前先读一遍**
 - `references/base-ui.md`：**组件框架**。spec 的 `type` 用 Base UI 原语（`dialog` / `switch` / `accordion` / `select`…），写 spec 和实现前都先看它
 - `examples/base-ui/spec.json`：Base UI 组件示例（Dialog / Switch / Tabs / Accordion / Progress / Toast）
 - `examples/task-tags/spec.json`：完整示例（新增页、删除页、内联卡片、表格列变化、流程、后端）
 
-构建只需要 Node ≥ 18；生成的 HTML 是纯前端的，**不需要也不要启动任何服务**。**不要手写 HTML**：永远写 spec 再 build。
+构建只需要 Node ≥ 18；默认生成的 `preview.html` 是纯前端单文件，**离线即可直接打开**。需要网页内实时对话改原型时，再用 `serve.mjs` 启动本地预览服务。**不要手写 HTML**：永远写 spec 再 build。
 
 ## 什么时候用
 
@@ -104,6 +106,35 @@ node $SKILL/scripts/build.mjs .smyw/<dir>/spec.json
 在沙箱预览里，页面可能无法保存进度（页面顶部会提示），也可能无法自动复制（这时会自动选中全部反馈，让用户按 Ctrl+C）。功能本身都能正常使用。
 
 给用户的话保持简短：3～5 条变化要点，加一句"可以直接在页面上拖动或批注，改完到「反馈」页点「复制反馈」，粘贴给我"。如果有 questions，提醒用户在「反馈」页回答（画布左侧也有入口）。
+
+### 4b. 实时交互预览（Live Preview，可选）
+
+如果用户在本地浏览器预览，且希望**直接在网页里对话询问/修改并实时热更新画布**（免去来回复制粘贴 Markdown）：
+
+1. **启动本地服务**（后台常驻运行，仅监听 `127.0.0.1` 随机端口，零外部依赖）：
+   ~~~bash
+   node $SKILL/scripts/serve.mjs .smyw/<dir>/spec.json
+   ~~~
+   把输出的本地 URL（如 `http://127.0.0.1:54321/`）交给用户打开。服务会自动在同目录生成 `.live.json`、`.inbox/` 和 `.live-log.md`。
+
+2. **主 Agent 零功耗长等 + 直接秒改（默认推荐，跨所有平台通用）**：
+   - **平时只挂一个零轮询的后台等待命令**（等待期间 0 唤醒、0 token，也不常驻任何 Subagent；利用主对话热缓存，响应速度最快）：
+     ~~~bash
+     node $SKILL/scripts/bridge.mjs wait .smyw/<dir>/spec.json --brief --timeout 0
+     ~~~
+     （`--brief` 只输出极简指针 `{ event, kind, reqFile, preview }`，避免把大段 Markdown/patch 直接刷进主对话 stdout。）
+   - **当 `wait` 唤醒主 Agent 时**：
+     - **`kind === "chat"`**：
+       1. 推送进度并按需读取 `reqFile`（若只是简单文字修改，直接看 `preview` 或读 `reqFile` 即可；若存在 `feedbackFile` 且 `opsCount > 0`，先跑 `node $SKILL/scripts/apply-feedback.mjs "<feedbackFile>" <specPath>` 合入画布拖拽补丁）；
+       2. 精确编辑 `spec.json`（保留已有节点稳定 id、递增 `version`、写简短 `versionNote`），在一条命令里串联校验与回复：
+          ~~~bash
+          node $SKILL/scripts/build.mjs .smyw/<dir>/spec.json && node $SKILL/scripts/bridge.mjs reply .smyw/<dir>/spec.json --text "<简洁中文说明>"
+          ~~~
+          （纯提问无需改图时直接 `bridge.mjs reply ... --no-reload --text "..."`。）
+       3. 立刻重新在后台挂起 `bridge.mjs wait .smyw/<dir>/spec.json --brief --timeout 0` 等待下一条消息。
+     - **`kind === "approve"`**：运行 `node $SKILL/scripts/bridge.mjs stop .smyw/<dir>/spec.json` 关闭预览服务，然后开始实现代码。
+
+   > 可选：在 Claude Code 环境下，也可以直接用 `node $SKILL/scripts/serve.mjs .smyw/<dir>/spec.json --driver claude --resume <session_id>`，由服务按需拉起 `--fork-session` 短命进程处理并流式推送。
 
 ### 5. 原型阶段：停下来等
 在用户反馈或明确确认之前，**不要开始实现**。

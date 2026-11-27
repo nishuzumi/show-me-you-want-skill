@@ -1,4 +1,5 @@
 node_modules/
 dist/
 tests/screenshots/
+.smyw/
 .DS_Store
