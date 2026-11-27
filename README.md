@@ -33,7 +33,24 @@ smyw 是一个给编码 Agent（Claude Code、DeepSeek Harness 等支持 `SKILL.
 
 ## 安装
 
-把 `skills/smyw` 目录放到 Agent 读取 skill 的位置即可：
+### 使用 Vercel `skills` CLI 一键安装（推荐）
+
+支持自动安装到 Claude Code、Cursor、Codex 等主流 Agent：
+
+```bash
+# 全局安装（所有项目可用）
+npx skills add nishuzumi/show-me-you-want-skill -g
+
+# 或只安装到当前项目
+npx skills add nishuzumi/show-me-you-want-skill
+
+# 查看仓库内可安装的 skill
+npx skills add nishuzumi/show-me-you-want-skill --list
+```
+
+### 手动安装
+
+也可以把 `skills/smyw` 目录放到 Agent 读取 skill 的位置：
 
 ```bash
 git clone https://github.com/nishuzumi/show-me-you-want-skill.git
