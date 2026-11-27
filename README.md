@@ -201,11 +201,11 @@ spec 里的 `type` 直接写 Base UI 的原语，Agent 按组件来拼：
 
 ### 10. 直接改方案
 
-顶部切到「编辑方案」，底部出现组件库。拖页面底板或空白处是平移，拖组件是挪位置。
+顶部切到「编辑方案」，左侧改动清单自动切换为**可视化缩略图组件库**（支持搜索，边缘小箭头可随时折叠）。拖空白处平移画布，按住左侧组件缩略图卡片即可拖放到画布上。
 
 ![编辑模式](docs/screenshots/10-edit-mode.png)
 
-按住一个组件拖动，鼠标旁边跟着组件名，蓝线标出会放在哪里（前面、后面或放进容器）：
+按住组件缩略图拖动时，鼠标旁跟随缩略图预览卡片，蓝线标出会放在哪里（前面、后面或放进容器）：
 
 ![拖动组件](docs/screenshots/11-drag-component.png)
 
@@ -281,7 +281,9 @@ node skills/smyw/scripts/bridge.mjs stop .smyw/<dir>/spec.json
 node skills/smyw/scripts/serve.mjs .smyw/<dir>/spec.json --driver claude --resume <session_id>
 ```
 
-在网页上点选任意元素后直接提问或提修改意见，会自动附带选中节点的 `#id`、当前未提交的画布拖拽补丁与批注；Agent 更新 `spec.json` 后画布原地**无刷新热更新**并自动定位到本轮增量对比 `v(N-1) → vN`。离线直接打开 `preview.html` 时聊天窗自动隐藏，保持纯静态单文件体验不变。
+在网页上点选任意元素后直接提问或提修改意见，会自动附带选中节点的 `#id`、当前未提交的画布拖拽补丁与批注；Agent 更新 `spec.json` 后画布原地**无刷新热更新**并自动定位到本轮增量对比 `v(N-1) → vN`。右下角悬浮对话框支持一键缩小为圆形悬浮图标；离线直接打开 `preview.html` 时自动隐藏，保持纯静态单文件体验不变。
+
+![实时交互 Agent 窗口](docs/screenshots/29-live-agent.png)
 
 ## 反馈回到 Agent 之后
 

@@ -2933,7 +2933,15 @@ function layoutPanels() {
     const pending = [];
     const pickSide = (box, rx, ry) => {
       const st = box.dataset.status || '';
-      if (st === 'removed' && rx <= 0.58) return 'l';
+      const isSplit = g.classList.contains('is-split');
+      if (isSplit && st === 'added') {
+        if (rx > 0.62) return 'r';
+        return ry < 0.44 ? 't' : 'b';
+      }
+      if (isSplit && st === 'removed') {
+        if (rx < 0.58) return 'l';
+        return ry < 0.44 ? 't' : 'b';
+      }
       if (rx < 0.34) return 'l';
       if (rx > 0.66) return 'r';
       if (ry < 0.44) return 't';
